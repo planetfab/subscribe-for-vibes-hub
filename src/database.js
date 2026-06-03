@@ -5,11 +5,17 @@ let pool = null;
 const memStore = [];
 
 async function init() {
-  if (config.database.url) {
+  if (!config.database.url) {
+    console.warn('DATABASE_URL not set — using in-memory store (data will not persist across restarts)');
+    return;
+  }
+
+  try {
     const { Pool } = require('pg');
     pool = new Pool({
       connectionString: config.database.url,
       ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 5000,
     });
     await pool.query(`
       CREATE TABLE IF NOT EXISTS content (
@@ -29,8 +35,9 @@ async function init() {
       )
     `);
     console.log('PostgreSQL database ready');
-  } else {
-    console.warn('DATABASE_URL not set — using in-memory store (data will not persist across restarts)');
+  } catch (err) {
+    console.error(`PostgreSQL connection failed (${err.message}) — falling back to in-memory store`);
+    pool = null;
   }
 }
 
