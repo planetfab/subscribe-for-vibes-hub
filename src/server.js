@@ -11,6 +11,11 @@ const publishRoutes = require('./routes/publish');
 
 const app = express();
 
+// Railway (and most PaaS) terminate TLS at their proxy and forward plain
+// HTTP to the container. Trust the first proxy so Express sees the correct
+// protocol, and so session cookies work properly behind HTTPS.
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(
@@ -19,7 +24,8 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: false, // set to true once behind HTTPS on Railway
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   })
