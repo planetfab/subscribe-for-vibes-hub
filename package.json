@@ -1,0 +1,28 @@
+{
+  "name": "subscribe-for-vibes-hub",
+  "version": "1.0.0",
+  "description": "PlanetFab Studio — Subscribe for Vibes editorial dashboard",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "axios": "^1.6.7",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "imapflow": "^1.0.162",
+    "mailparser": "^3.6.9",
+    "node-cron": "^3.0.3",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
