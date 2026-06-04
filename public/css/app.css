@@ -579,6 +579,53 @@ body.bulk-mode .card-actions { display: none; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Check Email button states ──────────────────────────────────────────── */
+
+/* Spans that aren't active are hidden; JS drives state via data-state attr */
+.check-loading,
+.check-done { display: none; }
+
+/* Loading state: pulse the button, show spinner + text */
+#checkEmailBtn[data-state="loading"] .check-idle { display: none; }
+#checkEmailBtn[data-state="loading"] .check-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+#checkEmailBtn[data-state="loading"] {
+  animation: check-pulse 1.2s ease-in-out infinite;
+}
+
+/* Done state: show result text */
+#checkEmailBtn[data-state="done"] .check-idle { display: none; }
+#checkEmailBtn[data-state="done"] .check-done { display: inline; }
+#checkEmailBtn[data-state="done"][data-result="success"] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+#checkEmailBtn[data-state="done"][data-result="error"] {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+/* Ghost-context spinner: uses currentColor so it works in any state */
+.check-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+@keyframes check-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
 /* ── Settings page ──────────────────────────────────────────────────────── */
 
 .settings-page {

@@ -17,7 +17,11 @@
     <div class="header-actions">
       <span class="header-user" id="headerUser"></span>
       <button class="btn btn-ghost btn-sm" id="bulkToggleBtn" onclick="toggleBulkMode()">Select</button>
-      <button class="btn btn-ghost btn-sm" id="checkEmailBtn" onclick="checkEmail()">Check Email</button>
+      <button class="btn btn-ghost btn-sm" id="checkEmailBtn" onclick="checkEmail()">
+        <span class="check-idle">Check Email</span>
+        <span class="check-loading"><span class="check-spinner"></span>Checking…</span>
+        <span class="check-done"></span>
+      </button>
       <a href="/settings" class="btn btn-ghost btn-sm">Settings</a>
       <a href="/auth/logout" class="btn btn-ghost btn-sm">Logout</a>
     </div>

@@ -357,18 +357,43 @@ async function saveBlog(id) {
 
 async function checkEmail() {
   const btn = document.getElementById('checkEmailBtn');
+  // Lock current width so the button never shrinks during state changes
+  btn.style.minWidth = btn.offsetWidth + 'px';
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>';
+  btn.dataset.state = 'loading';
+
+  let processed = 0;
+  let isError = false;
+
   try {
     const result = await apiFetch('/api/content/check-email', { method: 'POST' });
+    processed = result.processed;
     await loadContent();
-    showToast(result.processed > 0 ? `${result.processed} new item${result.processed !== 1 ? 's' : ''} added` : 'No new emails');
+    if (processed > 0) showToast(`${processed} new item${processed !== 1 ? 's' : ''} added`);
   } catch (err) {
+    isError = true;
     showToast(err.message || 'Email check failed', true);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Check Email';
   }
+
+  const doneSpan = btn.querySelector('.check-done');
+  if (isError) {
+    btn.dataset.result = 'error';
+    doneSpan.textContent = '✗ Failed';
+  } else if (processed > 0) {
+    btn.dataset.result = 'success';
+    doneSpan.textContent = `✓ ${processed} new`;
+  } else {
+    btn.dataset.result = 'success';
+    doneSpan.textContent = '✓ No new emails';
+  }
+  btn.dataset.state = 'done';
+
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.style.minWidth = '';
+    delete btn.dataset.state;
+    delete btn.dataset.result;
+  }, 2500);
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
