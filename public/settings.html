@@ -42,6 +42,27 @@
       </div>
     </div>
 
+    <div class="settings-section" style="margin-top:36px">
+      <div class="settings-section-header">
+        <h2>Instagram Connection</h2>
+        <p>Connects via your Facebook account. Your Instagram account must be a Business account linked to a Facebook Page you admin.</p>
+      </div>
+
+      <div id="igError" class="settings-alert settings-alert-error" style="display:none"></div>
+      <div id="igSuccess" class="settings-alert settings-alert-success" style="display:none"></div>
+
+      <div id="igCard" class="settings-cards">
+        <div class="settings-card">
+          <div class="settings-card-loading">Loading&hellip;</div>
+        </div>
+      </div>
+
+      <div class="settings-prereq">
+        <strong>Before connecting:</strong> make sure <code>META_APP_SECRET</code> is set in Railway environment variables and the Meta app is in <strong>Live</strong> mode. The redirect URI in Facebook Login settings must be exactly:
+        <code class="settings-uri">https://hub.planetfab.com/auth/instagram/callback</code>
+      </div>
+    </div>
+
   </div>
 
   <div class="toast" id="toast"></div>

@@ -1,21 +1,22 @@
 const axios = require('axios');
 const config = require('../config');
+const db = require('../database');
 
-const GRAPH_BASE = 'https://graph.facebook.com/v19.0';
+const GRAPH = 'https://graph.facebook.com/v19.0';
 
 async function publishToInstagram(item) {
-  const token = config.meta.instagramToken;
-  const accountId = config.meta.instagramAccountId;
+  // DB tokens (set via OAuth) take precedence over env vars
+  const token     = await db.getSetting('instagram_access_token') || config.meta.instagramToken;
+  const accountId = await db.getSetting('instagram_account_id')   || config.meta.instagramAccountId;
 
   if (!token || !accountId) {
     throw new Error(
-      'Instagram credentials not configured. ' +
-      'Complete the Meta OAuth flow after the app is live at hub.planetfab.com.'
+      'Instagram credentials not configured. Go to /settings and connect via OAuth.'
     );
   }
 
-  // Step 1: create media container (text-only / caption post)
-  const containerRes = await axios.post(`${GRAPH_BASE}/${accountId}/media`, {
+  // Step 1: create media container
+  const containerRes = await axios.post(`${GRAPH}/${accountId}/media`, {
     caption: item.instagram_caption,
     access_token: token,
   });
@@ -23,7 +24,7 @@ async function publishToInstagram(item) {
   const containerId = containerRes.data.id;
 
   // Step 2: publish the container
-  const publishRes = await axios.post(`${GRAPH_BASE}/${accountId}/media_publish`, {
+  const publishRes = await axios.post(`${GRAPH}/${accountId}/media_publish`, {
     creation_id: containerId,
     access_token: token,
   });

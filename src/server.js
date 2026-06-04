@@ -9,8 +9,9 @@ const requireAuth = require('./middleware/auth');
 const authRoutes        = require('./routes/auth');
 const contentRoutes     = require('./routes/content');
 const publishRoutes     = require('./routes/publish');
-const linkedinOAuth     = require('./routes/linkedin-oauth');
-const settingsApiRoutes = require('./routes/settings-api');
+const linkedinOAuth          = require('./routes/linkedin-oauth');
+const { router: instagramOAuth } = require('./routes/instagram-oauth');
+const settingsApiRoutes      = require('./routes/settings-api');
 
 const app = express();
 
@@ -39,7 +40,8 @@ app.use('/auth', authRoutes);
 
 // LinkedIn OAuth callback is hit by a browser that still has a valid session
 // (the user was redirected away from our app and back), so requireAuth is fine.
-app.use('/auth/linkedin', requireAuth, linkedinOAuth);
+app.use('/auth/linkedin',   requireAuth, linkedinOAuth);
+app.use('/auth/instagram', requireAuth, instagramOAuth);
 
 // ── Protected API routes ─────────────────────────────────────────────────
 app.use('/api/content',  requireAuth, contentRoutes);
