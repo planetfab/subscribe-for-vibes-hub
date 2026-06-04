@@ -113,7 +113,14 @@ body {
   border-color: var(--border-dark);
 }
 
-.field textarea { resize: vertical; min-height: 72px; }
+.field textarea { resize: vertical; min-height: 72px; max-width: 100%; }
+
+/* Blog Potential auto-grows to fit its content */
+#editBlogPotential {
+  field-sizing: content;
+  min-height: 2.5em;
+  resize: vertical;
+}
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
@@ -873,19 +880,24 @@ body.bulk-mode .card-actions { display: none; }
     justify-content: center;
   }
 
-  /* Edit modal: full screen */
+  /* Edit modal: full screen, no horizontal overflow */
   #editModal {
     padding: 0;
     align-items: stretch;
+    overflow: hidden;
   }
   #editModal .modal {
-    max-width: 100%;
+    width: 100%;
+    max-width: 100vw;
     max-height: 100%;
     height: 100%;
     border: none;
     border-top: 3px solid var(--ink);
     border-radius: 0;
     padding: 20px 16px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    box-sizing: border-box;
   }
   #editModal .modal-actions {
     flex-direction: row;

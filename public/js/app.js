@@ -247,7 +247,10 @@ function openEdit(id) {
   document.getElementById('editNewsletterBlurb').value = item.newsletter_blurb || '';
   document.getElementById('editLinkedinHook').value = item.linkedin_hook || '';
   document.getElementById('editInstagramCaption').value = item.instagram_caption || '';
-  document.getElementById('editBlogPotential').value = item.blog_potential || '';
+  const bpField = document.getElementById('editBlogPotential');
+  bpField.value = item.blog_potential || '';
+  bpField.style.height = 'auto';
+  bpField.style.height = bpField.scrollHeight + 'px';
   document.getElementById('editSourceUrls').value = item.source_urls || '';
   document.getElementById('editStatus').value = item.status || 'Draft';
   updateBlurbCount();
