@@ -49,6 +49,10 @@ async function init() {
         updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // Migration: add deleted_at for soft-delete / trash (safe to run repeatedly)
+    await pool.query(`
+      ALTER TABLE content ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
+    `);
     console.log('PostgreSQL database ready');
   } catch (err) {
     console.error(`PostgreSQL connection failed (${err.message}) — falling back to in-memory store`);
@@ -90,10 +94,12 @@ async function create(data) {
 
 async function getAll() {
   if (pool) {
-    const { rows } = await pool.query('SELECT * FROM content ORDER BY created_at DESC');
+    const { rows } = await pool.query(
+      'SELECT * FROM content WHERE deleted_at IS NULL ORDER BY created_at DESC'
+    );
     return rows;
   }
-  return [...memStore];
+  return memStore.filter(i => !i.deleted_at);
 }
 
 async function getById(id) {
@@ -132,6 +138,111 @@ async function update(id, data) {
   return memStore[idx];
 }
 
+// ── Soft delete (moves to Trash) ─────────────────────────────────────────────
+
+async function deleteById(id) {
+  if (pool) {
+    await pool.query(
+      'UPDATE content SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+    return;
+  }
+  const item = memStore.find(i => i.id === id);
+  if (item && !item.deleted_at) item.deleted_at = new Date().toISOString();
+}
+
+async function deleteMany(ids) {
+  if (!ids.length) return;
+  if (pool) {
+    await pool.query(
+      'UPDATE content SET deleted_at = NOW() WHERE id = ANY($1) AND deleted_at IS NULL',
+      [ids]
+    );
+    return;
+  }
+  for (const id of ids) {
+    const item = memStore.find(i => i.id === id);
+    if (item && !item.deleted_at) item.deleted_at = new Date().toISOString();
+  }
+}
+
+// ── Trash operations ─────────────────────────────────────────────────────────
+
+const TRASH_TTL_DAYS = 5;
+
+function trashCutoff() {
+  return new Date(Date.now() - TRASH_TTL_DAYS * 24 * 60 * 60 * 1000);
+}
+
+async function getTrash() {
+  const cutoff = trashCutoff();
+  if (pool) {
+    const { rows } = await pool.query(
+      'SELECT * FROM content WHERE deleted_at IS NOT NULL AND deleted_at > $1 ORDER BY deleted_at DESC',
+      [cutoff]
+    );
+    return rows;
+  }
+  return memStore.filter(i => i.deleted_at && new Date(i.deleted_at) > cutoff);
+}
+
+async function restoreById(id) {
+  if (pool) {
+    const { rows } = await pool.query(
+      'UPDATE content SET deleted_at = NULL WHERE id = $1 RETURNING *',
+      [id]
+    );
+    return rows[0] || null;
+  }
+  const item = memStore.find(i => i.id === id);
+  if (!item) return null;
+  delete item.deleted_at;
+  return item;
+}
+
+async function permanentDeleteById(id) {
+  if (pool) {
+    await pool.query('DELETE FROM content WHERE id = $1', [id]);
+    return;
+  }
+  const idx = memStore.findIndex(i => i.id === id);
+  if (idx !== -1) memStore.splice(idx, 1);
+}
+
+async function emptyTrash() {
+  if (pool) {
+    await pool.query('DELETE FROM content WHERE deleted_at IS NOT NULL');
+    return;
+  }
+  const toRemove = memStore.filter(i => !!i.deleted_at).map(i => i.id);
+  for (const id of toRemove) {
+    const idx = memStore.findIndex(i => i.id === id);
+    if (idx !== -1) memStore.splice(idx, 1);
+  }
+}
+
+async function purgeOldTrash() {
+  const cutoff = trashCutoff();
+  if (pool) {
+    const { rowCount } = await pool.query(
+      'DELETE FROM content WHERE deleted_at IS NOT NULL AND deleted_at < $1',
+      [cutoff]
+    );
+    if (rowCount > 0) console.log(`[db] Purged ${rowCount} expired trash item${rowCount !== 1 ? 's' : ''}`);
+    return;
+  }
+  const before = memStore.length;
+  const cutoffStr = cutoff.toISOString();
+  for (let i = memStore.length - 1; i >= 0; i--) {
+    if (memStore[i].deleted_at && memStore[i].deleted_at < cutoffStr) memStore.splice(i, 1);
+  }
+  const purged = before - memStore.length;
+  if (purged > 0) console.log(`[db] Purged ${purged} expired trash item${purged !== 1 ? 's' : ''} (in-memory)`);
+}
+
+// ── Settings / email dedup ───────────────────────────────────────────────────
+
 async function getSetting(key) {
   if (pool) {
     const { rows } = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
@@ -150,27 +261,6 @@ async function setSetting(key, value) {
     return;
   }
   memSettings[key] = value;
-}
-
-async function deleteById(id) {
-  if (pool) {
-    await pool.query('DELETE FROM content WHERE id = $1', [id]);
-    return;
-  }
-  const idx = memStore.findIndex(i => i.id === id);
-  if (idx !== -1) memStore.splice(idx, 1);
-}
-
-async function deleteMany(ids) {
-  if (!ids.length) return;
-  if (pool) {
-    await pool.query('DELETE FROM content WHERE id = ANY($1)', [ids]);
-    return;
-  }
-  for (const id of ids) {
-    const idx = memStore.findIndex(i => i.id === id);
-    if (idx !== -1) memStore.splice(idx, 1);
-  }
 }
 
 async function hasProcessedEmail(messageId) {
@@ -195,4 +285,11 @@ async function markEmailProcessed(messageId) {
   memProcessed.add(messageId);
 }
 
-module.exports = { init, create, getAll, getById, update, deleteById, deleteMany, getSetting, setSetting, hasProcessedEmail, markEmailProcessed };
+module.exports = {
+  init,
+  create, getAll, getById, update,
+  deleteById, deleteMany,
+  getTrash, restoreById, permanentDeleteById, emptyTrash, purgeOldTrash,
+  getSetting, setSetting,
+  hasProcessedEmail, markEmailProcessed,
+};

@@ -1,6 +1,7 @@
 /* ── State ───────────────────────────────────────────────────────────────── */
 
 let allItems = [];
+let trashItems = [];
 let currentFilter = 'all';
 let bulkMode = false;
 let selectedIds = new Set();
@@ -30,7 +31,7 @@ async function loadContent() {
 }
 
 function updateCounts() {
-  const counts = { all: allItems.length };
+  const counts = { all: allItems.length, trash: trashItems.length };
   for (const item of allItems) {
     counts[item.status] = (counts[item.status] || 0) + 1;
   }
@@ -43,16 +44,37 @@ function updateCounts() {
 /* ── Filtering ──────────────────────────────────────────────────────────── */
 
 function setFilter(filter, btn) {
+  if (bulkMode) toggleBulkMode();
   currentFilter = filter;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  renderCards();
+  const emptyBtn = document.getElementById('emptyTrashBtn');
+  if (filter === 'trash') {
+    emptyBtn.style.display = '';
+    loadTrash();
+  } else {
+    emptyBtn.style.display = 'none';
+    renderCards();
+  }
 }
 
 /* ── Rendering ──────────────────────────────────────────────────────────── */
 
 function renderCards() {
   const grid = document.getElementById('cardsGrid');
+
+  if (currentFilter === 'trash') {
+    if (!trashItems.length) {
+      grid.innerHTML = `<div class="empty-state">
+        <h3>Trash is empty</h3>
+        <p>Deleted cards appear here for 5 days before being permanently removed.</p>
+      </div>`;
+    } else {
+      grid.innerHTML = trashItems.map(trashCardHTML).join('');
+    }
+    return;
+  }
+
   const items = currentFilter === 'all'
     ? allItems
     : allItems.filter(i => i.status === currentFilter);
@@ -116,6 +138,43 @@ function cardHTML(item) {
     <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${item.id}')" ${dis}>Newsletter</button>
     <button class="btn btn-ghost btn-sm" onclick="saveBlog('${item.id}')">Save to Blog</button>
     <button class="btn btn-danger btn-sm" onclick="openDeleteConfirm('${item.id}')">Delete</button>
+  </div>
+</div>`;
+}
+
+async function loadTrash() {
+  try {
+    trashItems = await apiFetch('/api/content/trash');
+    updateCounts();
+    renderCards();
+  } catch (err) {
+    showToast('Failed to load trash', true);
+  }
+}
+
+function trashCardHTML(item) {
+  const deletedAt = item.deleted_at ? new Date(item.deleted_at) : null;
+  const purgeAt = deletedAt ? new Date(deletedAt.getTime() + 5 * 24 * 60 * 60 * 1000) : null;
+  const msLeft = purgeAt ? purgeAt - Date.now() : null;
+  const daysLeft = msLeft ? Math.ceil(msLeft / (1000 * 60 * 60 * 24)) : null;
+  const purgeNote = daysLeft > 0
+    ? `auto-purge in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`
+    : 'purging soon';
+  const blurb = (item.newsletter_blurb || '').substring(0, 200);
+  const blurbTrunc = (item.newsletter_blurb || '').length > 200;
+
+  return `
+<div class="card card-trash" id="card-${item.id}">
+  <div class="card-header">
+    <h3 class="card-title">${esc(item.piece_title || 'Untitled')}</h3>
+    <span class="status-badge status-draft">Deleted</span>
+  </div>
+  ${item.section_name ? `<div class="section-tag">${esc(item.section_name)}</div>` : ''}
+  <p class="card-blurb">${esc(blurb)}${blurbTrunc ? '&hellip;' : ''}</p>
+  ${deletedAt ? `<div class="card-date">Deleted ${formatDate(item.deleted_at)} &middot; ${purgeNote}</div>` : ''}
+  <div class="card-actions">
+    <button class="btn btn-approve btn-sm" onclick="restoreItem('${item.id}')">Restore</button>
+    <button class="btn btn-danger btn-sm" onclick="permanentDeleteConfirm('${item.id}')">Delete Forever</button>
   </div>
 </div>`;
 }
@@ -184,15 +243,16 @@ function openDeleteConfirm(id) {
   const item = allItems.find(i => i.id === id);
   const title = item?.piece_title || 'this item';
   openConfirm(
-    'Delete Content',
-    `Delete "${title}"? This cannot be undone.`,
+    'Move to Trash',
+    `Move "${title}" to Trash? You can restore it within 5 days.`,
     async () => {
       try {
         await apiFetch(`/api/content/${id}`, { method: 'DELETE' });
         allItems = allItems.filter(i => i.id !== id);
+        trashItems = []; // stale — will reload on next trash visit
         updateCounts();
         renderCards();
-        showToast('Deleted');
+        showToast('Moved to Trash');
       } catch (err) {
         showToast(err.message || 'Delete failed', true);
       }
@@ -204,20 +264,75 @@ function openBulkDeleteConfirm() {
   const n = selectedIds.size;
   if (!n) return;
   openConfirm(
-    'Delete Content',
-    `Delete ${n} item${n !== 1 ? 's' : ''}? This cannot be undone.`,
+    'Move to Trash',
+    `Move ${n} item${n !== 1 ? 's' : ''} to Trash? You can restore them within 5 days.`,
     async () => {
       try {
         const ids = [...selectedIds];
         await apiFetch('/api/content/bulk-delete', { method: 'POST', body: { ids } });
         allItems = allItems.filter(i => !selectedIds.has(i.id));
+        trashItems = []; // stale — will reload on next trash visit
         selectedIds.clear();
         updateCounts();
         renderCards();
         toggleBulkMode();
-        showToast(`Deleted ${ids.length} item${ids.length !== 1 ? 's' : ''}`);
+        showToast(`Moved ${ids.length} item${ids.length !== 1 ? 's' : ''} to Trash`);
       } catch (err) {
         showToast(err.message || 'Bulk delete failed', true);
+      }
+    }
+  );
+}
+
+/* ── Trash actions ──────────────────────────────────────────────────────── */
+
+async function restoreItem(id) {
+  try {
+    const item = await apiFetch(`/api/content/trash/${id}/restore`, { method: 'POST' });
+    trashItems = trashItems.filter(i => i.id !== id);
+    allItems.unshift(item);
+    updateCounts();
+    renderCards();
+    showToast('Restored');
+  } catch (err) {
+    showToast(err.message || 'Restore failed', true);
+  }
+}
+
+function permanentDeleteConfirm(id) {
+  const item = trashItems.find(i => i.id === id);
+  const title = item?.piece_title || 'this item';
+  openConfirm(
+    'Delete Forever',
+    `Permanently delete "${title}"? This cannot be undone.`,
+    async () => {
+      try {
+        await apiFetch(`/api/content/trash/${id}`, { method: 'DELETE' });
+        trashItems = trashItems.filter(i => i.id !== id);
+        updateCounts();
+        renderCards();
+        showToast('Permanently deleted');
+      } catch (err) {
+        showToast(err.message || 'Delete failed', true);
+      }
+    }
+  );
+}
+
+function confirmEmptyTrash() {
+  if (!trashItems.length) return;
+  openConfirm(
+    'Empty Trash',
+    `Permanently delete all ${trashItems.length} item${trashItems.length !== 1 ? 's' : ''} in Trash? This cannot be undone.`,
+    async () => {
+      try {
+        await apiFetch('/api/content/trash', { method: 'DELETE' });
+        trashItems = [];
+        updateCounts();
+        renderCards();
+        showToast('Trash emptied');
+      } catch (err) {
+        showToast(err.message || 'Empty trash failed', true);
       }
     }
   );

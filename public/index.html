@@ -34,6 +34,8 @@
     <button class="filter-btn" onclick="setFilter('Approved', this)">Approved <span class="filter-count" id="count-Approved"></span></button>
     <button class="filter-btn" onclick="setFilter('Published', this)">Published <span class="filter-count" id="count-Published"></span></button>
     <button class="filter-btn" onclick="setFilter('Newsletter Ready', this)">Newsletter Ready <span class="filter-count" id="count-Newsletter Ready"></span></button>
+    <button class="filter-btn filter-btn-trash" onclick="setFilter('trash', this)">Trash <span class="filter-count" id="count-trash"></span></button>
+    <button class="btn btn-ghost btn-sm" id="emptyTrashBtn" style="display:none" onclick="confirmEmptyTrash()">Empty Trash</button>
   </div>
 
   <!-- Bulk mode: actions bar (hidden by default) -->

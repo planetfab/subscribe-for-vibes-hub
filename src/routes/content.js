@@ -22,6 +22,47 @@ router.get('/me', (req, res) => {
   res.json({ username: req.session.user.username });
 });
 
+// ── Trash routes (defined before /:id to avoid param collision) ──────────────
+
+router.get('/trash', async (req, res) => {
+  try {
+    const items = await db.getTrash();
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/trash/:id/restore', async (req, res) => {
+  try {
+    const item = await db.restoreById(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    res.json(item);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/trash/:id', async (req, res) => {
+  try {
+    await db.permanentDeleteById(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/trash', async (req, res) => {
+  try {
+    await db.emptyTrash();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Content CRUD ─────────────────────────────────────────────────────────────
+
 router.put('/:id', async (req, res) => {
   try {
     const data = {};
@@ -45,7 +86,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Bulk delete — POST to avoid routing conflicts with DELETE /:id
 router.post('/bulk-delete', async (req, res) => {
   try {
     const { ids } = req.body;

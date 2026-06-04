@@ -470,6 +470,14 @@ body.bulk-mode .card-header { padding-left: 26px; }
 /* Hide action buttons in bulk mode */
 body.bulk-mode .card-actions { display: none; }
 
+/* Trash cards: muted to signal transient / pending-deletion state */
+.card-trash { opacity: 0.72; border-style: dashed; }
+.card-trash:hover { border-color: var(--ink-muted); opacity: 0.9; }
+
+/* Trash filter tab */
+.filter-btn-trash { margin-left: auto; }
+@media (max-width: 767px) { .filter-btn-trash { margin-left: 0; } }
+
 /* ── Empty state ────────────────────────────────────────────────────────── */
 
 .empty-state {

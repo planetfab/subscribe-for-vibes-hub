@@ -155,6 +155,11 @@ function startEmailWatcher() {
   cron.schedule('*/5 * * * *', () => {
     checkEmails().catch(err => console.error('[email] Scheduled check failed:', err.message));
   });
+  // Purge trash items older than 5 days — runs once daily at 3 am
+  db.purgeOldTrash().catch(err => console.error('[db] Initial trash purge failed:', err.message));
+  cron.schedule('0 3 * * *', () => {
+    db.purgeOldTrash().catch(err => console.error('[db] Trash purge failed:', err.message));
+  });
 }
 
 module.exports = { startEmailWatcher, checkEmails };
