@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Subscribe for Vibes Hub</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="header-brand">
+      <span class="header-wordmark">PlanetFab</span>
+      <h1>Settings</h1>
+    </div>
+    <div class="header-actions">
+      <a href="/" class="btn btn-secondary btn-sm">Dashboard</a>
+      <a href="/auth/logout" class="btn btn-secondary btn-sm">Logout</a>
+    </div>
+  </header>
+
+  <div class="settings-page">
+
+    <div class="settings-section">
+      <div class="settings-section-header">
+        <h2>LinkedIn Connections</h2>
+        <p>Connect each account via OAuth to enable one-click publishing. Tokens are stored securely and checked automatically when you publish.</p>
+      </div>
+
+      <div id="liError" class="settings-alert settings-alert-error" style="display:none"></div>
+      <div id="liSuccess" class="settings-alert settings-alert-success" style="display:none"></div>
+
+      <div id="liCards" class="settings-cards">
+        <div class="settings-card">
+          <div class="settings-card-loading">Loading&hellip;</div>
+        </div>
+      </div>
+
+      <div class="settings-prereq">
+        <strong>Before connecting:</strong> make sure <code>LINKEDIN_CLIENT_ID</code> and <code>LINKEDIN_CLIENT_SECRET</code> are set in Railway environment variables. The redirect URI registered in your LinkedIn app must be exactly:
+        <code class="settings-uri">https://hub.planetfab.com/auth/linkedin/callback</code>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/js/settings.js"></script>
+</body>
+</html>

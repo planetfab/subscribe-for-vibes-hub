@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 
 let pool = null;
 const memStore = [];
+const memSettings = {};
 
 async function init() {
   if (!config.database.url) {
@@ -17,6 +18,13 @@ async function init() {
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 5000,
     });
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS content (
         id            UUID PRIMARY KEY,
@@ -117,4 +125,24 @@ async function update(id, data) {
   return memStore[idx];
 }
 
-module.exports = { init, create, getAll, getById, update };
+async function getSetting(key) {
+  if (pool) {
+    const { rows } = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
+    return rows[0]?.value ?? null;
+  }
+  return memSettings[key] ?? null;
+}
+
+async function setSetting(key, value) {
+  if (pool) {
+    await pool.query(
+      `INSERT INTO settings (key, value) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+      [key, value]
+    );
+    return;
+  }
+  memSettings[key] = value;
+}
+
+module.exports = { init, create, getAll, getById, update, getSetting, setSetting };

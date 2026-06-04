@@ -4,10 +4,13 @@ const path = require('path');
 const config = require('./config');
 const db = require('./database');
 const { startEmailWatcher } = require('./email-watcher');
+const requireAuth = require('./middleware/auth');
 
-const authRoutes = require('./routes/auth');
-const contentRoutes = require('./routes/content');
-const publishRoutes = require('./routes/publish');
+const authRoutes        = require('./routes/auth');
+const contentRoutes     = require('./routes/content');
+const publishRoutes     = require('./routes/publish');
+const linkedinOAuth     = require('./routes/linkedin-oauth');
+const settingsApiRoutes = require('./routes/settings-api');
 
 const app = express();
 
@@ -31,32 +34,34 @@ app.use(
   })
 );
 
-function requireAuth(req, res, next) {
-  if (req.session.user) return next();
-  if (req.originalUrl.startsWith('/api')) return res.status(401).json({ error: 'Unauthorized' });
-  res.redirect('/login');
-}
-
-// Auth routes (no auth guard)
+// ── Unauthenticated routes ───────────────────────────────────────────────
 app.use('/auth', authRoutes);
 
-// Protected API routes
-app.use('/api/content', requireAuth, contentRoutes);
-app.use('/api/publish', requireAuth, publishRoutes);
+// LinkedIn OAuth callback is hit by a browser that still has a valid session
+// (the user was redirected away from our app and back), so requireAuth is fine.
+app.use('/auth/linkedin', requireAuth, linkedinOAuth);
 
-// Login page (unauthenticated)
+// ── Protected API routes ─────────────────────────────────────────────────
+app.use('/api/content',  requireAuth, contentRoutes);
+app.use('/api/publish',  requireAuth, publishRoutes);
+app.use('/api/settings', requireAuth, settingsApiRoutes);
+
+// ── Pages ────────────────────────────────────────────────────────────────
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/login.html'));
 });
 
-// Dashboard root (protected)
 app.get('/', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// Static assets (CSS, JS, etc.)
+app.get('/settings', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/settings.html'));
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
+// ── Start ────────────────────────────────────────────────────────────────
 async function main() {
   await db.init();
   startEmailWatcher();

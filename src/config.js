@@ -26,6 +26,7 @@ module.exports = {
   linkedin: {
     clientId: process.env.LINKEDIN_CLIENT_ID,
     clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+    redirectUri: process.env.LINKEDIN_REDIRECT_URI || 'https://hub.planetfab.com/auth/linkedin/callback',
     fabriceToken: process.env.LINKEDIN_FABRICE_TOKEN,
     fabriceUrn: process.env.LINKEDIN_FABRICE_URN,
     michelleToken: process.env.LINKEDIN_MICHELLE_TOKEN,

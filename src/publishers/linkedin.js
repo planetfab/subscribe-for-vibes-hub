@@ -1,40 +1,41 @@
 const axios = require('axios');
 const config = require('../config');
+const db = require('../database');
 
-const PROFILES = {
-  fabrice: () => ({
-    token: config.linkedin.fabriceToken,
-    urn: config.linkedin.fabriceUrn,
-  }),
-  michelle: () => ({
-    token: config.linkedin.michelleToken,
-    urn: config.linkedin.michelleUrn,
-  }),
-  planetfab: () => ({
-    token: config.linkedin.planetfabToken,
-    urn: config.linkedin.planetfabPageId
-      ? `urn:li:organization:${config.linkedin.planetfabPageId}`
-      : null,
-  }),
-};
+async function resolveProfile(type) {
+  // DB tokens (set via OAuth) take precedence over env vars
+  const dbToken = await db.getSetting(`linkedin_${type}_token`);
+  const dbUrn   = await db.getSetting(`linkedin_${type}_urn`);
+
+  let token, urn;
+
+  if (type === 'planetfab') {
+    token = dbToken || config.linkedin.planetfabToken;
+    urn   = dbUrn
+      || (config.linkedin.planetfabPageId ? `urn:li:organization:${config.linkedin.planetfabPageId}` : null);
+  } else {
+    token = dbToken || config.linkedin[`${type}Token`];
+    urn   = dbUrn   || config.linkedin[`${type}Urn`];
+  }
+
+  return { token, urn };
+}
 
 async function publishToLinkedIn(item, type) {
-  const profileFn = PROFILES[type];
-  if (!profileFn) throw new Error(`Unknown LinkedIn profile type: ${type}`);
+  const validTypes = ['fabrice', 'michelle', 'planetfab'];
+  if (!validTypes.includes(type)) throw new Error(`Unknown LinkedIn profile type: ${type}`);
 
-  const { token, urn } = profileFn();
+  const { token, urn } = await resolveProfile(type);
+
   if (!token || !urn) {
     throw new Error(
       `LinkedIn credentials not configured for "${type}". ` +
-      'Complete the OAuth flow after the app is live at hub.planetfab.com.'
+      'Go to /settings and connect the account via OAuth.'
     );
   }
 
-  // Build post text: hook + first source URL if available
   const firstUrl = (item.source_urls || '').split(',').map(u => u.trim()).find(Boolean) || '';
-  const postText = firstUrl
-    ? `${item.linkedin_hook}\n\n${firstUrl}`
-    : item.linkedin_hook;
+  const postText = firstUrl ? `${item.linkedin_hook}\n\n${firstUrl}` : item.linkedin_hook;
 
   const { data } = await axios.post(
     'https://api.linkedin.com/v2/ugcPosts',
@@ -47,9 +48,7 @@ async function publishToLinkedIn(item, type) {
           shareMediaCategory: 'NONE',
         },
       },
-      visibility: {
-        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
-      },
+      visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
     },
     {
       headers: {
