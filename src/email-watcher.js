@@ -1,6 +1,7 @@
 const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
 const cron = require('node-cron');
+const crypto = require('crypto');
 const config = require('./config');
 const { processContent } = require('./claude');
 const db = require('./database');
@@ -31,15 +32,18 @@ async function checkEmails() {
     console.log('[email] INBOX locked');
 
     try {
-      // Log mailbox status so we can see total vs unseen counts
-      const status = await client.status('INBOX', { messages: true, unseen: true, recent: true });
-      console.log(`[email] Mailbox status — total: ${status.messages}, unseen: ${status.unseen}, recent: ${status.recent}`);
+      const status = await client.status('INBOX', { messages: true, unseen: true });
+      console.log(`[email] Mailbox status — total: ${status.messages}, unseen: ${status.unseen}`);
 
-      const uids = await client.search({ seen: false });
-      console.log(`[email] Unseen UIDs found: [${uids.join(', ')}] (${uids.length} message${uids.length !== 1 ? 's' : ''})`);
+      // Search for all emails from the last 7 days regardless of seen flag,
+      // since another mail client marks messages read before we can see them.
+      const since = new Date();
+      since.setDate(since.getDate() - 7);
+      const uids = await client.search({ since });
+      console.log(`[email] UIDs in last 7 days: [${uids.join(', ')}] (${uids.length} total)`);
 
       if (!uids.length) {
-        console.log('[email] No unseen messages — done');
+        console.log('[email] No messages in the last 7 days — done');
         return 0;
       }
 
@@ -57,9 +61,24 @@ async function checkEmails() {
           console.log(`[email] uid ${uid} — subject: "${subject}"`);
           console.log(`[email] uid ${uid} — from: ${parsed.from?.text || '(unknown)'}`);
           console.log(`[email] uid ${uid} — date: ${parsed.date || '(unknown)'}`);
+
+          // Use the email's Message-ID header as the dedup key.
+          // Fall back to a hash of subject+date+from if the header is absent.
+          const rawMessageId = parsed.messageId?.trim();
+          const messageId = rawMessageId
+            || crypto.createHash('sha1')
+                 .update(`${subject}|${parsed.date?.toISOString() || ''}|${parsed.from?.text || ''}`)
+                 .digest('hex');
+          console.log(`[email] uid ${uid} — message-id: ${rawMessageId || `(none, using hash ${messageId.substring(0, 12)}…)`}`);
+
+          const alreadyDone = await db.hasProcessedEmail(messageId);
+          if (alreadyDone) {
+            console.log(`[email] uid ${uid} — already processed, skipping`);
+            continue;
+          }
+
           console.log(`[email] uid ${uid} — has text: ${!!parsed.text}, has html: ${!!parsed.html}`);
 
-          // Prefer plain text; fall back to HTML → text conversion
           let bodyText = parsed.text || '';
           if (!bodyText && parsed.html) {
             console.log(`[email] uid ${uid} — using HTML fallback`);
@@ -80,25 +99,24 @@ async function checkEmails() {
             .replace(/\t/g, '')
             .trim();
 
-          console.log(`[email] uid ${uid} — sanitized body length: ${sanitized.length} chars`);
+          console.log(`[email] uid ${uid} — sanitized body: ${sanitized.length} chars`);
           if (sanitized.length > 0) {
-            console.log(`[email] uid ${uid} — body preview: "${sanitized.substring(0, 120)}…"`);
+            console.log(`[email] uid ${uid} — preview: "${sanitized.substring(0, 120)}…"`);
           }
 
           if (!sanitized) {
             console.log(`[email] uid ${uid} — skipping: empty body after sanitization`);
-            await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
+            await db.markEmailProcessed(messageId);
             continue;
           }
 
           console.log(`[email] uid ${uid} — sending to Claude`);
           const result = await processContent(subject, sanitized);
           await db.create({ ...result, email_subject: subject, raw_content: sanitized });
+          await db.markEmailProcessed(messageId);
           console.log(`[email] uid ${uid} — stored as "${result.piece_title}"`);
           processed++;
 
-          await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
-          console.log(`[email] uid ${uid} — marked as seen`);
         } catch (err) {
           console.error(`[email] uid ${uid} — error: ${err.message}`);
         }
@@ -109,7 +127,7 @@ async function checkEmails() {
     }
 
     await client.logout();
-    console.log(`[email] Done — processed ${processed} message${processed !== 1 ? 's' : ''}`);
+    console.log(`[email] Done — processed ${processed} new message${processed !== 1 ? 's' : ''}`);
   } catch (err) {
     console.error(`[email] IMAP error: ${err.message}`);
     if (err.response) console.error(`[email] Server response: ${err.response}`);
