@@ -113,15 +113,18 @@ async function checkEmails() {
             console.log(`[email] uid ${uid} — preview: "${sanitized.substring(0, 120)}…"`);
           }
 
-          if (!sanitized) {
-            console.log(`[email] uid ${uid} — skipping: empty body after sanitization`);
+          if (!sanitized && images.length === 0) {
+            console.log(`[email] uid ${uid} — skipping: no body and no image attachments`);
             await db.markEmailProcessed(messageId);
             continue;
           }
 
-          console.log(`[email] uid ${uid} — sending to Claude${images.length > 0 ? ` with ${images.length} image(s)` : ''}`);
-          const result = await processContent(subject, sanitized, images);
-          await db.create({ ...result, email_subject: subject, raw_content: sanitized });
+          const imageOnlyPrompt = 'These images were sent as inspiration for the Subscribe for Vibes newsletter. Analyze what you see — the place, object, experience, or idea being shown — and generate newsletter content in Michelle\'s voice as if she discovered and wanted to share this. Use the same three-move structure and section names as always.';
+          const contentToProcess = sanitized || imageOnlyPrompt;
+
+          console.log(`[email] uid ${uid} — sending to Claude${images.length > 0 ? ` with ${images.length} image(s)` : ''}${!sanitized ? ' (image-only)' : ''}`);
+          const result = await processContent(subject, contentToProcess, images);
+          await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)' });
           await db.markEmailProcessed(messageId);
           console.log(`[email] uid ${uid} — stored as "${result.piece_title}"`);
           processed++;

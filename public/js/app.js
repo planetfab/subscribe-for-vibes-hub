@@ -82,7 +82,7 @@ function cardHTML(item) {
   const urls = (item.source_urls || '').split(',').map(u => u.trim()).filter(Boolean);
   const blurb = (item.newsletter_blurb || '').substring(0, 200);
   const blurbTrunc = (item.newsletter_blurb || '').length > 200;
-  const hook = (item.linkedin_hook || '').substring(0, 100);
+  const hook = (item.linkedin_hook || '').substring(0, 180);
   const isSelected = selectedIds.has(item.id);
 
   return `
@@ -96,8 +96,8 @@ function cardHTML(item) {
   <p class="card-blurb">${esc(blurb)}${blurbTrunc ? '&hellip;' : ''}</p>
   <div class="card-meta">
     <div>
-      <div class="meta-label">LinkedIn Hook</div>
-      <div class="meta-value">${esc(hook)}${(item.linkedin_hook||'').length > 100 ? '&hellip;' : ''}</div>
+      <div class="meta-label">LinkedIn Post</div>
+      <div class="meta-value">${esc(hook)}${(item.linkedin_hook||'').length > 180 ? '&hellip;' : ''}</div>
     </div>
     <div>
       <div class="meta-label">Blog Potential</div>
