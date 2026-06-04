@@ -141,14 +141,17 @@ async function update(id, data) {
 // ── Soft delete (moves to Trash) ─────────────────────────────────────────────
 
 async function deleteById(id) {
+  console.log(`[db.deleteById] called — id: ${id}, pool: ${pool ? 'connected' : 'NULL (in-memory)'}`);
   if (pool) {
-    await pool.query(
+    const result = await pool.query(
       'UPDATE content SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
+    console.log(`[db.deleteById] UPDATE executed — rowCount: ${result.rowCount}`);
     return;
   }
   const item = memStore.find(i => i.id === id);
+  console.log(`[db.deleteById] in-memory — item found: ${!!item}`);
   if (item && !item.deleted_at) item.deleted_at = new Date().toISOString();
 }
 

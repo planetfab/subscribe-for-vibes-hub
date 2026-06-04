@@ -78,10 +78,13 @@ router.put('/:id', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
+  console.log(`[delete] route hit — id: ${req.params.id}`);
   try {
     await db.deleteById(req.params.id);
+    console.log(`[delete] db.deleteById returned without error for id: ${req.params.id}`);
     res.json({ success: true });
   } catch (err) {
+    console.error(`[delete] db.deleteById threw for id ${req.params.id}: ${err.message}`);
     res.status(500).json({ error: err.message });
   }
 });
