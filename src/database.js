@@ -7,6 +7,11 @@ const memSettings = {};
 const memProcessed = new Set();
 
 async function init() {
+  const rawUrl = process.env.DATABASE_URL;
+  console.log(`[db.init] DATABASE_URL present: ${!!rawUrl}`);
+  console.log(`[db.init] DATABASE_URL value: ${rawUrl ? rawUrl.substring(0, 40) + '…' : '(undefined)'}`);
+  console.log(`[db.init] config.database.url present: ${!!config.database.url}`);
+
   if (!config.database.url) {
     console.warn('DATABASE_URL not set — using in-memory store (data will not persist across restarts)');
     return;
