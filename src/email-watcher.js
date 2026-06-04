@@ -77,6 +77,15 @@ async function checkEmails() {
             continue;
           }
 
+          // Extract image attachments for Claude vision
+          const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+          const images = (parsed.attachments || [])
+            .filter(a => SUPPORTED_IMAGE_TYPES.has(a.contentType?.toLowerCase()))
+            .map(a => ({ data: a.content, contentType: a.contentType.toLowerCase(), filename: a.filename || 'image' }));
+          if (images.length > 0) {
+            console.log(`[email] uid ${uid} — image attachments: ${images.map(i => `${i.filename} (${Math.round(i.data.length / 1024)}KB)`).join(', ')}`);
+          }
+
           console.log(`[email] uid ${uid} — has text: ${!!parsed.text}, has html: ${!!parsed.html}`);
 
           let bodyText = parsed.text || '';
@@ -110,8 +119,8 @@ async function checkEmails() {
             continue;
           }
 
-          console.log(`[email] uid ${uid} — sending to Claude`);
-          const result = await processContent(subject, sanitized);
+          console.log(`[email] uid ${uid} — sending to Claude${images.length > 0 ? ` with ${images.length} image(s)` : ''}`);
+          const result = await processContent(subject, sanitized, images);
           await db.create({ ...result, email_subject: subject, raw_content: sanitized });
           await db.markEmailProcessed(messageId);
           console.log(`[email] uid ${uid} — stored as "${result.piece_title}"`);
