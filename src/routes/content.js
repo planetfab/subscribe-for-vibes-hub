@@ -36,6 +36,29 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    await db.deleteById(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk delete — POST to avoid routing conflicts with DELETE /:id
+router.post('/bulk-delete', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || !ids.length) {
+      return res.status(400).json({ error: 'ids array required' });
+    }
+    await db.deleteMany(ids);
+    res.json({ success: true, deleted: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/check-email', async (req, res) => {
   try {
     const count = await checkEmails();

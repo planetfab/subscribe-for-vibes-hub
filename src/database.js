@@ -152,6 +152,27 @@ async function setSetting(key, value) {
   memSettings[key] = value;
 }
 
+async function deleteById(id) {
+  if (pool) {
+    await pool.query('DELETE FROM content WHERE id = $1', [id]);
+    return;
+  }
+  const idx = memStore.findIndex(i => i.id === id);
+  if (idx !== -1) memStore.splice(idx, 1);
+}
+
+async function deleteMany(ids) {
+  if (!ids.length) return;
+  if (pool) {
+    await pool.query('DELETE FROM content WHERE id = ANY($1)', [ids]);
+    return;
+  }
+  for (const id of ids) {
+    const idx = memStore.findIndex(i => i.id === id);
+    if (idx !== -1) memStore.splice(idx, 1);
+  }
+}
+
 async function hasProcessedEmail(messageId) {
   if (pool) {
     const { rows } = await pool.query(
@@ -174,4 +195,4 @@ async function markEmailProcessed(messageId) {
   memProcessed.add(messageId);
 }
 
-module.exports = { init, create, getAll, getById, update, getSetting, setSetting, hasProcessedEmail, markEmailProcessed };
+module.exports = { init, create, getAll, getById, update, deleteById, deleteMany, getSetting, setSetting, hasProcessedEmail, markEmailProcessed };

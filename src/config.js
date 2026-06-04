@@ -35,6 +35,12 @@ module.exports = {
     planetfabToken: process.env.LINKEDIN_PLANETFAB_TOKEN,
   },
 
+  wordpress: {
+    username:    process.env.WORDPRESS_USERNAME,
+    appPassword: process.env.WORDPRESS_APP_PASSWORD,
+    siteUrl:     process.env.WORDPRESS_SITE_URL || 'https://www.planetfab.com',
+  },
+
   meta: {
     appId: process.env.META_APP_ID || '962437633354825',
     appSecret: process.env.META_APP_SECRET,
