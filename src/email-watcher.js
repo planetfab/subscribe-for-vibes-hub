@@ -37,9 +37,10 @@ async function checkEmails() {
 
       // Search for all emails from the last 7 days regardless of seen flag,
       // since another mail client marks messages read before we can see them.
+      // Pass { uid: true } so search returns actual UIDs, not sequence numbers.
       const since = new Date();
       since.setDate(since.getDate() - 7);
-      const uids = await client.search({ since });
+      const uids = await client.search({ since }, { uid: true });
       console.log(`[email] UIDs in last 7 days: [${uids.join(', ')}] (${uids.length} total)`);
 
       if (!uids.length) {
@@ -47,13 +48,13 @@ async function checkEmails() {
         return 0;
       }
 
-      for (const uid of uids) {
-        console.log(`[email] Downloading uid ${uid}`);
+      // fetch() with source:true returns the full raw RFC822 message as a Buffer.
+      // uid:true in both query and options keeps everything in UID-space.
+      for await (const message of client.fetch(uids, { source: true, uid: true }, { uid: true })) {
+        const uid = message.uid;
+        console.log(`[email] Processing uid ${uid}`);
         try {
-          const { content } = await client.download(String(uid), undefined, { uid: true });
-          const chunks = [];
-          for await (const chunk of content) chunks.push(chunk);
-          const rawBuffer = Buffer.concat(chunks);
+          const rawBuffer = message.source;
           console.log(`[email] uid ${uid} — raw size: ${rawBuffer.length} bytes`);
 
           const parsed = await simpleParser(rawBuffer);
