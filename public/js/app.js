@@ -398,12 +398,15 @@ function renderEditImages() {
   const container = document.getElementById('editImages');
   if (!editImages.length) {
     section.style.display = 'none';
+    container.innerHTML = '';
     return;
   }
   section.style.display = '';
+  container.className = `edit-images${editImages.length > 1 ? ' reorderable' : ''}`;
   container.innerHTML = editImages.map((img, i) => `
-    <div class="edit-thumb-wrap">
+    <div class="edit-thumb-wrap" data-idx="${i}">
       <img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}">
+      <span class="hero-badge">Hero</span>
       <button type="button" class="edit-thumb-remove" onclick="removeEditImage(${i})" aria-label="Remove image">&times;</button>
     </div>
   `).join('');
@@ -562,6 +565,92 @@ async function checkEmail() {
   }, 2500);
 }
 
+/* ── Edit-modal image drag-to-reorder ───────────────────────────────────── */
+
+let dragState = null;
+
+function setupImageDrag() {
+  document.getElementById('editImages').addEventListener('pointerdown', startDrag);
+}
+
+function startDrag(e) {
+  const wrap = e.target.closest('.edit-thumb-wrap');
+  // Ignore taps on the remove button; ignore if not in reorderable mode
+  if (!wrap || e.target.closest('.edit-thumb-remove')) return;
+  if (!document.getElementById('editImages').classList.contains('reorderable')) return;
+
+  e.preventDefault();
+  const idx = parseInt(wrap.dataset.idx);
+  const rect = wrap.getBoundingClientRect();
+
+  // Floating clone that follows the pointer
+  const clone = wrap.cloneNode(true);
+  clone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;` +
+    `width:${rect.width}px;height:${rect.height}px;opacity:0.8;pointer-events:none;` +
+    `z-index:500;transform:scale(1.08);box-shadow:0 4px 18px rgba(0,0,0,0.28);transition:none;`;
+  document.body.appendChild(clone);
+  wrap.classList.add('dragging');
+
+  dragState = {
+    srcIdx: idx, clone, srcWrap: wrap,
+    offsetX: e.clientX - rect.left,
+    offsetY: e.clientY - rect.top,
+  };
+
+  // Pointer capture ensures move/up events come here even when off-element
+  wrap.setPointerCapture(e.pointerId);
+  wrap.addEventListener('pointermove', onDragMove);
+  wrap.addEventListener('pointerup', onDragEnd);
+  wrap.addEventListener('pointercancel', onDragEnd);
+}
+
+function onDragMove(e) {
+  if (!dragState) return;
+  dragState.clone.style.left = `${e.clientX - dragState.offsetX}px`;
+  dragState.clone.style.top  = `${e.clientY - dragState.offsetY}px`;
+
+  // Show a drop-before indicator on the target slot
+  const container = document.getElementById('editImages');
+  container.querySelectorAll('.edit-thumb-wrap').forEach(w => w.classList.remove('drop-before'));
+  const wraps = [...container.querySelectorAll('.edit-thumb-wrap')];
+  for (let i = 0; i < wraps.length; i++) {
+    const r = wraps[i].getBoundingClientRect();
+    if (e.clientX < r.left + r.width / 2) { wraps[i].classList.add('drop-before'); break; }
+  }
+}
+
+function onDragEnd(e) {
+  if (!dragState) return;
+  const { srcIdx, clone, srcWrap } = dragState;
+
+  srcWrap.removeEventListener('pointermove', onDragMove);
+  srcWrap.removeEventListener('pointerup',   onDragEnd);
+  srcWrap.removeEventListener('pointercancel', onDragEnd);
+
+  const container = document.getElementById('editImages');
+  const wraps = [...container.querySelectorAll('.edit-thumb-wrap')];
+
+  // Find insertion index in the original (pre-mutation) array
+  let dropIdx = editImages.length; // default: end
+  for (let i = 0; i < wraps.length; i++) {
+    if (e.clientX < wraps[i].getBoundingClientRect().left + wraps[i].getBoundingClientRect().width / 2) {
+      dropIdx = i; break;
+    }
+  }
+
+  // Only mutate if the position actually changes
+  const noChange = dropIdx === srcIdx || dropIdx === srcIdx + 1;
+  if (!noChange) {
+    const [moved] = editImages.splice(srcIdx, 1);
+    editImages.splice(dropIdx > srcIdx ? dropIdx - 1 : dropIdx, 0, moved);
+  }
+
+  clone.remove();
+  container.querySelectorAll('.edit-thumb-wrap').forEach(w => w.classList.remove('drop-before'));
+  dragState = null;
+  renderEditImages();
+}
+
 /* ── Lightbox ───────────────────────────────────────────────────────────── */
 
 function openLightbox(itemId, idx) {
@@ -637,4 +726,5 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeModal(); closeConfirm(); if (bulkMode) toggleBulkMode(); }
 });
 
+setupImageDrag();
 init();

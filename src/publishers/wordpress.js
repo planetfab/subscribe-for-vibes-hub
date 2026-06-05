@@ -2,6 +2,31 @@ const axios = require('axios');
 const config = require('../config');
 const { resizeToJpeg, decodeBuffer } = require('../image-utils');
 
+// Build Gutenberg-compatible HTML for the post body.
+// Inline images (2nd, 3rd) are inserted as wp:image blocks after the first paragraph.
+function buildPostContent(blurb, inlineImageUrls) {
+  const paragraphs = (blurb || '')
+    .split(/\n{2,}/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => `<!-- wp:paragraph -->\n<p>${p.replace(/\n/g, '<br>')}</p>\n<!-- /wp:paragraph -->`);
+
+  if (!inlineImageUrls.length) {
+    return paragraphs.join('\n\n') || '';
+  }
+
+  const imgBlocks = inlineImageUrls
+    .map(url =>
+      `<!-- wp:image {"sizeSlug":"large"} -->\n<figure class="wp-block-image size-large"><img src="${url}" alt=""/></figure>\n<!-- /wp:image -->`
+    )
+    .join('\n\n');
+
+  if (!paragraphs.length) return imgBlocks;
+
+  // Insert image block(s) after the first paragraph
+  return [paragraphs[0], imgBlocks, ...paragraphs.slice(1)].join('\n\n');
+}
+
 async function saveToWordPress(item) {
   const { username, appPassword, siteUrl } = config.wordpress;
 
@@ -15,26 +40,21 @@ async function saveToWordPress(item) {
   const authHeader = { Authorization: `Basic ${credentials}` };
 
   // Upload all card images to the WP media library.
-  // The first image is resized to 1536×1024 and used as the featured image.
-  // Additional images are uploaded at their original size/format.
-  // Individual upload failures are logged but don't block post creation.
+  // First image → resized to 1536×1024 JPEG → used as featured image.
+  // Additional images → original size/format → embedded inline in the post body.
+  // null is pushed on individual failures to keep index alignment; failures are non-blocking.
   const images = item.images || [];
-  let featuredMediaId = null;
-  const uploadedMediaIds = [];
+  const uploadedMedia = []; // { id, source_url } | null per image
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
     try {
       let imageBuffer, contentType, filename;
       if (i === 0) {
-        // Featured image: resize to 1536×1024, convert to JPEG
         imageBuffer = await resizeToJpeg(img.data, 1536, 1024);
         contentType = 'image/jpeg';
-        filename = img.filename
-          ? img.filename.replace(/\.[^.]+$/, '.jpg')
-          : 'featured.jpg';
+        filename = img.filename ? img.filename.replace(/\.[^.]+$/, '.jpg') : 'featured.jpg';
       } else {
-        // Additional images: original size and format
         imageBuffer = decodeBuffer(img.data);
         contentType = img.contentType || 'image/jpeg';
         filename = img.filename || `image-${i}.jpg`;
@@ -54,25 +74,27 @@ async function saveToWordPress(item) {
         }
       );
 
-      uploadedMediaIds.push(mediaRes.data.id);
-      if (i === 0) featuredMediaId = mediaRes.data.id;
+      uploadedMedia.push({ id: mediaRes.data.id, source_url: mediaRes.data.source_url });
       console.log(`[wordpress] uploaded media ${i + 1}/${images.length} — WP media ID ${mediaRes.data.id}`);
     } catch (err) {
       console.error(`[wordpress] media upload ${i + 1} failed: ${err.message}`);
+      uploadedMedia.push(null);
     }
   }
 
-  // Create the draft post, attaching the featured image if upload succeeded
-  const postBody = {
-    title:   item.piece_title,
-    content: item.newsletter_blurb,
-    status:  'draft',
-    ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
-  };
+  const featuredMediaId = uploadedMedia[0]?.id || null;
+  // Images 2 and 3 (if uploaded successfully) are embedded inline in the post body
+  const inlineImageUrls = uploadedMedia.slice(1).filter(Boolean).map(m => m.source_url);
+  const content = buildPostContent(item.newsletter_blurb, inlineImageUrls);
 
   const { data } = await axios.post(
     `${siteUrl}/wp-json/wp/v2/posts`,
-    postBody,
+    {
+      title:   item.piece_title,
+      content,
+      status:  'draft',
+      ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
+    },
     { headers: { ...authHeader, 'Content-Type': 'application/json' } }
   );
 
@@ -80,7 +102,7 @@ async function saveToWordPress(item) {
     wordpressPostId: data.id,
     editUrl: `${siteUrl}/wp-admin/post.php?post=${data.id}&action=edit`,
     featuredMediaId,
-    uploadedMediaIds,
+    inlineImagesCount: inlineImageUrls.length,
   };
 }
 

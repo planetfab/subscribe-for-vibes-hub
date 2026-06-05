@@ -20,8 +20,10 @@ const app = express();
 // protocol, and so session cookies work properly behind HTTPS.
 app.set('trust proxy', 1);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Raise the JSON body limit to accommodate base64-encoded image arrays in PUT /api/content/:id
+// (3 × 4 MB images × 4/3 base64 ratio ≈ 16 MB; 50 MB gives comfortable headroom)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(
   session({
     secret: config.sessionSecret,

@@ -678,6 +678,49 @@ body.bulk-mode .card-actions { display: none; }
 }
 .edit-thumb-wrap .card-thumb:hover { opacity: 1; }
 
+/* Drag-to-reorder: shown when there are 2+ images */
+.edit-images.reorderable .edit-thumb-wrap {
+  cursor: grab;
+  touch-action: none; /* prevent scroll competing with drag on mobile */
+}
+.edit-images.reorderable .edit-thumb-wrap:active { cursor: grabbing; }
+
+/* Dragged item placeholder */
+.edit-images.reorderable .edit-thumb-wrap.dragging {
+  opacity: 0.18;
+}
+
+/* Drop-before indicator: 3px vertical bar on the left edge of the target slot */
+.edit-thumb-wrap.drop-before::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ink);
+  border-radius: 2px;
+}
+
+/* Hero badge on the first thumbnail — marks which image leads LinkedIn/WordPress */
+.hero-badge {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  background: var(--ink);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 5px;
+  line-height: 1.4;
+  pointer-events: none;
+  display: none;
+}
+
+.edit-thumb-wrap:first-child .hero-badge { display: block; }
+
 .edit-thumb-remove {
   position: absolute;
   top: -7px;
