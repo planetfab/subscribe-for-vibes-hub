@@ -78,9 +78,10 @@
             <option value="Newsletter Ready">Newsletter Ready</option>
           </select>
         </div>
-        <div id="editImagesSection" class="field" style="display:none">
-          <label>Images <span class="field-hint">Click &times; to remove</span></label>
+        <div id="editImagesSection" class="field">
+          <label>Images <span class="field-hint">Drag to reorder · click &times; to remove · max 3</span></label>
           <div id="editImages" class="edit-images"></div>
+          <input type="file" id="imageFileInput" accept="image/jpeg,image/png,image/webp" multiple style="display:none">
         </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
@@ -120,6 +121,6 @@
   </div>
 
   <div class="toast" id="toast"></div>
-  <script src="/js/app.js?v=2"></script>
+  <script src="/js/app.js?v=3"></script>
 </body>
 </html>

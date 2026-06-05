@@ -383,6 +383,8 @@ function openEdit(id) {
   document.getElementById('editSourceUrls').value = item.source_urls || '';
   document.getElementById('editStatus').value = item.status || 'Draft';
   editImages = [...(item.images || [])];
+  // Reset file input so the same file can be re-selected after a removal
+  document.getElementById('imageFileInput').value = '';
   renderEditImages();
   updateBlurbCount();
   document.getElementById('editModal').style.display = 'flex';
@@ -394,23 +396,25 @@ function openEdit(id) {
   document.getElementById('editPieceTitle').focus();
 }
 
+const MAX_CARD_IMAGES = 3;
+
 function renderEditImages() {
-  const section = document.getElementById('editImagesSection');
   const container = document.getElementById('editImages');
-  if (!editImages.length) {
-    section.style.display = 'none';
-    container.innerHTML = '';
-    return;
-  }
-  section.style.display = '';
   container.className = `edit-images${editImages.length > 1 ? ' reorderable' : ''}`;
-  container.innerHTML = editImages.map((img, i) => `
+
+  const thumbs = editImages.map((img, i) => `
     <div class="edit-thumb-wrap" data-idx="${i}">
       <img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}">
       <span class="hero-badge">Hero</span>
       <button type="button" class="edit-thumb-remove" onclick="removeEditImage(${i})" aria-label="Remove image">&times;</button>
     </div>
   `).join('');
+
+  const addBtn = editImages.length < MAX_CARD_IMAGES
+    ? `<button type="button" class="add-image-btn" onclick="document.getElementById('imageFileInput').click()" title="Add image (JPEG, PNG, WebP)">+ Add Image</button>`
+    : '';
+
+  container.innerHTML = thumbs + addBtn;
 }
 
 function removeEditImage(idx) {
@@ -571,6 +575,45 @@ async function checkEmail() {
 
 let dragState = null;
 
+/* ── Edit-modal image upload ─────────────────────────────────────────────── */
+
+function setupImageUpload() {
+  document.getElementById('imageFileInput').addEventListener('change', async e => {
+    const files = [...e.target.files];
+    e.target.value = ''; // reset so the same file can be picked again
+
+    const slots = MAX_CARD_IMAGES - editImages.length;
+    if (slots <= 0) { showToast('Maximum 3 images per card', true); return; }
+
+    const accepted = files
+      .filter(f => ['image/jpeg', 'image/png', 'image/webp'].includes(f.type))
+      .slice(0, slots);
+
+    if (!accepted.length) { showToast('Please select a JPEG, PNG, or WebP image', true); return; }
+
+    for (const file of accepted) {
+      const base64 = await readFileAsBase64(file);
+      editImages.push({ data: base64, contentType: file.type, filename: file.name });
+    }
+
+    renderEditImages();
+    if (accepted.length < files.length) {
+      showToast(`Added ${accepted.length} image${accepted.length !== 1 ? 's' : ''} (max 3 per card)`);
+    }
+  });
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result.split(',')[1]); // strip "data:…;base64," prefix
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ── Edit-modal image drag-to-reorder ───────────────────────────────────── */
+
 function setupImageDrag() {
   document.getElementById('editImages').addEventListener('pointerdown', startDrag);
 }
@@ -728,5 +771,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeModal(); closeConfirm(); if (bulkMode) toggleBulkMode(); }
 });
 
+setupImageUpload();
 setupImageDrag();
 init();

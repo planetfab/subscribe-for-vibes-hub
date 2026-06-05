@@ -742,6 +742,33 @@ body.bulk-mode .card-actions { display: none; }
 }
 .edit-thumb-remove:hover { background: #c0392b; }
 
+/* ── Add Image button (edit modal) ──────────────────────────────────────── */
+
+.add-image-btn {
+  width: 80px;
+  height: 64px;
+  border: 1px dashed var(--border-dark);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-family: var(--font);
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  border-radius: var(--radius);
+}
+
+.add-image-btn:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--bg);
+}
+
 /* ── Card image thumbnails ──────────────────────────────────────────────── */
 
 .card-images {
