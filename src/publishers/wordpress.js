@@ -2,7 +2,7 @@ const axios = require('axios');
 const config = require('../config');
 const { resizeToJpeg, decodeBuffer } = require('../image-utils');
 
-// Build Gutenberg-compatible HTML for the post body.
+// Build Gutenberg-compatible HTML for the post body from plain text.
 // Inline images (2nd, 3rd) are inserted as wp:image blocks after the first paragraph.
 function buildPostContent(blurb, inlineImageUrls) {
   const paragraphs = (blurb || '')
@@ -25,6 +25,23 @@ function buildPostContent(blurb, inlineImageUrls) {
 
   // Insert image block(s) after the first paragraph
   return [paragraphs[0], imgBlocks, ...paragraphs.slice(1)].join('\n\n');
+}
+
+// Build post body from Quill HTML. Inline images are inserted after the first </p>.
+function buildPostContentFromHtml(html, inlineImageUrls) {
+  if (!inlineImageUrls.length) return html || '';
+
+  const imgBlocks = inlineImageUrls
+    .map(url =>
+      `<!-- wp:image {"sizeSlug":"large"} -->\n<figure class="wp-block-image size-large"><img src="${url}" alt=""/></figure>\n<!-- /wp:image -->`
+    )
+    .join('\n\n');
+
+  if (!html) return imgBlocks;
+
+  const firstParaEnd = html.indexOf('</p>');
+  if (firstParaEnd === -1) return html + '\n\n' + imgBlocks;
+  return html.slice(0, firstParaEnd + 4) + '\n\n' + imgBlocks + html.slice(firstParaEnd + 4);
 }
 
 async function saveToWordPress(item, author = 'fabrice') {
@@ -89,7 +106,19 @@ async function saveToWordPress(item, author = 'fabrice') {
   const featuredMediaId = uploadedMedia[0]?.id || null;
   // Images 2 and 3 (if uploaded successfully) are embedded inline in the post body
   const inlineImageUrls = uploadedMedia.slice(1).filter(Boolean).map(m => m.source_url);
-  const content = buildPostContent(item.newsletter_blurb, inlineImageUrls);
+
+  // Prefer blog_post (rich Quill HTML or Claude plain text) over newsletter_blurb.
+  // If blog_post is HTML from Quill (starts with <), use the HTML-aware builder
+  // so inline image blocks land after the first </p> rather than the first Gutenberg block.
+  let content;
+  const blogPostText = (item.blog_post || '').trim();
+  if (blogPostText && blogPostText.startsWith('<')) {
+    content = buildPostContentFromHtml(blogPostText, inlineImageUrls);
+  } else if (blogPostText) {
+    content = buildPostContent(blogPostText, inlineImageUrls);
+  } else {
+    content = buildPostContent(item.newsletter_blurb, inlineImageUrls);
+  }
 
   const { data } = await axios.post(
     `${siteUrl}/wp-json/wp/v2/posts`,

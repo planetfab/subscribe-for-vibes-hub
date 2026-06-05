@@ -9,6 +9,7 @@ let toastTimer = null;
 let lightboxImages = [];
 let lightboxIdx = 0;
 let editImages = [];
+let quill = null;
 
 /* ── Bootstrap ──────────────────────────────────────────────────────────── */
 
@@ -393,6 +394,35 @@ function openEdit(id) {
     bpField.style.height = 'auto';
     bpField.style.height = bpField.scrollHeight + 'px';
   });
+
+  // Initialize Quill once; on subsequent openEdit calls just update its content
+  if (!quill) {
+    quill = new Quill('#quillEditor', {
+      theme: 'snow',
+      modules: {
+        toolbar: [
+          ['bold', 'italic', 'underline'],
+          [{ header: [2, 3, false] }],
+          ['link'],
+          ['clean'],
+        ],
+      },
+    });
+  }
+  const blogPost = item.blog_post || '';
+  if (blogPost.trimStart().startsWith('<')) {
+    quill.clipboard.dangerouslyPasteHTML(blogPost);
+  } else if (blogPost) {
+    // Plain text from Claude: convert double-newline paragraph breaks to HTML
+    const html = blogPost
+      .split(/\n{2,}/)
+      .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+      .join('');
+    quill.clipboard.dangerouslyPasteHTML(html);
+  } else {
+    quill.setContents([]);
+  }
+
   document.getElementById('editPieceTitle').focus();
 }
 
@@ -446,6 +476,7 @@ document.getElementById('editBlogPotential')?.addEventListener('input', function
 document.getElementById('editForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('editId').value;
+  const rawBlogPostHtml = quill ? quill.root.innerHTML : '';
   const payload = {
     piece_title: document.getElementById('editPieceTitle').value,
     section_name: document.getElementById('editSectionName').value,
@@ -456,6 +487,8 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     source_urls: document.getElementById('editSourceUrls').value,
     status: document.getElementById('editStatus').value,
     images: editImages,
+    // Quill emits '<p><br></p>' for an empty editor — normalize to empty string
+    blog_post: rawBlogPostHtml === '<p><br></p>' ? '' : rawBlogPostHtml,
   };
   try {
     const updated = await apiFetch(`/api/content/${id}`, { method: 'PUT', body: payload });

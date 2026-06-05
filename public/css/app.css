@@ -769,6 +769,47 @@ body.bulk-mode .card-actions { display: none; }
   background: var(--bg);
 }
 
+/* ── Quill rich text editor (blog_post field) ───────────────────────────── */
+
+.quill-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.quill-wrap .ql-toolbar.ql-snow {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-muted, #f7f6f3);
+  font-family: var(--font);
+  padding: 6px 8px;
+}
+
+.quill-wrap .ql-container.ql-snow {
+  border: none;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.quill-wrap .ql-editor {
+  min-height: 180px;
+  max-height: 420px;
+  overflow-y: auto;
+  line-height: 1.65;
+  padding: 10px 12px;
+}
+
+.quill-wrap .ql-editor p {
+  margin-bottom: 0.7em;
+}
+
+.quill-wrap .ql-editor h2,
+.quill-wrap .ql-editor h3 {
+  font-weight: 600;
+  margin: 1em 0 0.4em;
+}
+
 /* ── Card image thumbnails ──────────────────────────────────────────────── */
 
 .card-images {
