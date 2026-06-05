@@ -295,6 +295,14 @@ async function setSetting(key, value) {
   memSettings[key] = value;
 }
 
+async function countProcessedEmails() {
+  if (pool) {
+    const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM processed_emails');
+    return rows[0].n;
+  }
+  return memProcessed.size;
+}
+
 async function hasProcessedEmail(messageId) {
   if (pool) {
     const { rows } = await pool.query(
@@ -323,5 +331,5 @@ module.exports = {
   deleteById, deleteMany,
   getTrash, restoreById, permanentDeleteById, emptyTrash, purgeOldTrash,
   getSetting, setSetting,
-  hasProcessedEmail, markEmailProcessed,
+  countProcessedEmails, hasProcessedEmail, markEmailProcessed,
 };

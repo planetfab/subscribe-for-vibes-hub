@@ -32,6 +32,9 @@ async function checkEmails() {
     console.log('[email] INBOX locked');
 
     try {
+      const alreadyProcessedCount = await db.countProcessedEmails();
+      console.log(`[email] processed_emails table has ${alreadyProcessedCount} record${alreadyProcessedCount !== 1 ? 's' : ''}`);
+
       const status = await client.status('INBOX', { messages: true, unseen: true });
       console.log(`[email] Mailbox status — total: ${status.messages}, unseen: ${status.unseen}`);
 
@@ -154,7 +157,7 @@ async function checkEmails() {
           const result = await processContent(subject, contentToProcess, images);
           await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages });
           await db.markEmailProcessed(messageId);
-          console.log(`[email] uid ${uid} — stored as "${result.piece_title}"`);
+          console.log(`[email] uid ${uid} — stored as "${result.piece_title}" and marked processed (message-id: ${messageId.substring(0, 40)}…)`);
           processed++;
 
         } catch (err) {
