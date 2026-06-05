@@ -23,7 +23,7 @@ The Make.com scenario is still running as a parallel backup and should remain ac
 |---|---|
 | Backend | Node.js 18+ with Express |
 | Frontend | Vanilla HTML / CSS / JavaScript (no framework) |
-| AI | Anthropic Claude API (`claude-sonnet-4-5`) |
+| AI | Anthropic Claude API (`claude-sonnet-4-5`) with `web_search_20250305` built-in tool |
 | Database | PostgreSQL via Railway addon (in-memory fallback for local dev) |
 | Email | IMAP via `imapflow` + `mailparser` (Dreamhost, `buzzby@planetfab.com`) |
 | Image processing | `sharp` — cover-crop resizing for LinkedIn (1200×627) and WordPress (1536×1024) |
@@ -268,6 +268,10 @@ The system prompt in `src/claude.js` produces **8 output fields**:
 
 `max_tokens` is set to 4000 to accommodate the full blog post alongside the other fields.
 
+**Web search:** The API call includes `tools: [{ type: 'web_search_20250305', name: 'web_search' }]`, Anthropic's built-in server-side search tool. When the email contains URLs, Claude fetches those pages first and uses the actual article content as primary source material. The `WEB SEARCH:` instruction in the system prompt directs Claude to do this before writing any output field. When web search runs, the response `content` array contains `server_tool_use` and `web_search_tool_result` blocks before the final text block — the code extracts the text block with `message.content.find(b => b.type === 'text')`.
+
+**Formatting rules (Strunk & White):** The `FORMATTING RULES` section of the system prompt constrains `blog_post` formatting: bold only for critical terms introduced for the first time, italic only for titles/foreign words/technical terms on first use, links only when directly citing a source, no headers, no underlines except hyperlinks. When in doubt, no formatting.
+
 ---
 
 ## Image Handling
@@ -378,6 +382,7 @@ Full-field editor with:
 - Live word count for newsletter blurb (target: 150 words)
 - Auto-grow textarea for Blog Potential
 - **Quill.js rich text editor** for Blog Post — supports bold, italic, underline, H2/H3 headings, and hyperlinks. Saves as HTML. Claude's plain-text output is auto-converted to `<p>` tags on first open.
+- **Copy-to-clipboard buttons** in each field label (right-aligned via `margin-left: auto`). Clicking copies the live DOM value — including unsaved edits — to clipboard, with a 2-second green checkmark. Blog Post reads from the Quill editor; all other fields read from their input/textarea. Buttons are always visible (not hover-only), implemented via `data-copy-field` placeholder buttons in HTML filled with SVG at startup by `initModalCopyButtons()`.
 - Image thumbnails with Hero badge, × remove, drag-to-reorder, and Add Image button
 
 ### Mobile layout
