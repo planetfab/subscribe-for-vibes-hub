@@ -26,6 +26,8 @@ The Make.com scenario is still running as a parallel backup and should remain ac
 | AI | Anthropic Claude API (`claude-sonnet-4-5`) |
 | Database | PostgreSQL via Railway addon (in-memory fallback for local dev) |
 | Email | IMAP via `imapflow` + `mailparser` (Dreamhost, `buzzby@planetfab.com`) |
+| Image processing | `sharp` — cover-crop resizing for LinkedIn (1200×627) and WordPress (1536×1024) |
+| Rich text editor | Quill.js 1.3.7 (CDN) — blog post field in edit modal |
 | Hosting | Railway (Hobby plan, auto-deploy from GitHub) |
 | Domain | `hub.planetfab.com` via Dreamhost DNS → Railway |
 | Publishing | LinkedIn UGC Posts API v2, Meta Graph API v19.0, WordPress REST API |
@@ -43,6 +45,7 @@ imapflow            — IMAP email client
 mailparser          — Email parsing (MIME, attachments)
 node-cron           — Scheduled email polling (every 5 minutes)
 pg                  — PostgreSQL client
+sharp               — Image resizing/cropping for platform-specific dimensions
 uuid                — UUID generation for content IDs
 ```
 
@@ -58,6 +61,7 @@ subscribe-for-vibes-hub/
 │   ├── database.js                # PostgreSQL + in-memory store, all CRUD
 │   ├── claude.js                  # Claude API integration with system prompt
 │   ├── email-watcher.js           # IMAP poller, dedup, Claude pipeline
+│   ├── image-utils.js             # sharp wrappers: resizeToJpeg(), decodeBuffer()
 │   ├── middleware/
 │   │   └── auth.js                # requireAuth middleware (shared)
 │   ├── routes/
@@ -68,9 +72,9 @@ subscribe-for-vibes-hub/
 │   │   ├── instagram-oauth.js     # Instagram/Facebook OAuth initiation + callback
 │   │   └── settings-api.js        # GET/POST /api/settings/linkedin, /instagram
 │   └── publishers/
-│       ├── linkedin.js            # LinkedIn UGC Posts API
+│       ├── linkedin.js            # LinkedIn UGC Posts API (with image upload)
 │       ├── instagram.js           # Meta Graph API (create container + publish)
-│       └── wordpress.js           # WordPress REST API (create draft post)
+│       └── wordpress.js           # WordPress REST API (draft post + media upload)
 ├── public/
 │   ├── index.html                 # Main dashboard
 │   ├── login.html                 # Login page
@@ -136,8 +140,10 @@ All variables must be set in Railway → Project → Service → Variables. They
 
 | Variable | Description |
 |---|---|
-| `WORDPRESS_USERNAME` | WordPress admin username on planetfab.com |
+| `WORDPRESS_USERNAME` | WordPress username for Fabrice's account on planetfab.com |
 | `WORDPRESS_APP_PASSWORD` | Application Password generated in WP Admin → Users → Profile → Application Passwords. Format: `xxxx xxxx xxxx xxxx xxxx xxxx` |
+| `WORDPRESS_MICHELLE_USERNAME` | WordPress username for Michelle's account on planetfab.com |
+| `WORDPRESS_MICHELLE_APP_PASSWORD` | Application Password for Michelle's WP account (same generation process) |
 | `WORDPRESS_SITE_URL` | Defaults to `https://www.planetfab.com` — only set if the site URL changes |
 
 ---
@@ -152,11 +158,12 @@ All variables must be set in Railway → Project → Service → Variables. They
 - No HTTP healthcheck (removed — was timing out; Railway uses TCP port check instead)
 - SSL certificate is valid and active on `hub.planetfab.com`
 - PostgreSQL addon is active; deletes are confirmed working (soft-delete sets `deleted_at`; `getAll` filters with `WHERE deleted_at IS NULL`)
+- DB init retries up to 4 times with 4-second delays (8s connection timeout) to survive Railway's PostgreSQL startup race
 
 ### Adding PostgreSQL (required for persistence)
 1. Railway dashboard → Project → **+ New** → **Database** → **Add PostgreSQL**
 2. Railway automatically injects `DATABASE_URL` into the service environment
-3. On next deploy the app creates four tables automatically: `content`, `settings`, `processed_emails`, `processed_emails` (all via `CREATE TABLE IF NOT EXISTS`)
+3. On next deploy the app creates all tables automatically via `CREATE TABLE IF NOT EXISTS` and runs `ALTER TABLE ADD COLUMN IF NOT EXISTS` migrations for every added column — safe to re-run on every startup
 4. Without `DATABASE_URL`, the app runs fine but all data is lost on restart
 
 ### Custom domain
@@ -173,7 +180,44 @@ All variables must be set in Railway → Project → Service → Variables. They
 - Branch: `main` (single branch, direct commits)
 - Railway watches `main` and redeploys automatically on push
 - `.env` is gitignored — never appears in the repo
-- GitHub CLI (`gh`) is installed at `~/.npm-global/bin/railway` for Railway CLI access
+
+---
+
+## Database Schema
+
+The app creates and migrates all tables automatically at startup. Current columns:
+
+### `content`
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID | Primary key |
+| `piece_title` | TEXT | |
+| `section_name` | TEXT | |
+| `newsletter_blurb` | TEXT | 150-word newsletter entry |
+| `linkedin_hook` | TEXT | Full LinkedIn post (150–250 words + hashtags) |
+| `instagram_caption` | TEXT | |
+| `blog_potential` | TEXT | Yes/No + notes |
+| `source_urls` | TEXT | Comma-separated |
+| `blog_post` | TEXT | 600–800 word article from Claude; stored as Quill HTML after first edit |
+| `status` | TEXT | `Draft`, `Approved`, `Published`, `Newsletter Ready` |
+| `email_subject` | TEXT | |
+| `raw_content` | TEXT | Sanitized email body sent to Claude |
+| `images` | TEXT | JSON array of `{data, contentType, filename}` — base64 encoded, up to 3 |
+| `email_message_id` | TEXT | Originating email Message-ID (dedup fallback) |
+| `deleted_at` | TIMESTAMPTZ | NULL = active; set = soft-deleted (Trash) |
+| `created_at` | TIMESTAMPTZ | |
+| `updated_at` | TIMESTAMPTZ | |
+
+### `processed_emails`
+| Column | Type | Notes |
+|---|---|---|
+| `message_id` | TEXT | Primary key — email Message-ID or SHA-1 hash fallback |
+| `processed_at` | TIMESTAMPTZ | |
+
+**Important:** Records in `processed_emails` are NEVER deleted, even when a content card is permanently deleted. This prevents deleted cards from being recreated on the next email check. A secondary dedup check also queries the `content` table for `email_message_id` matches (including soft-deleted rows) in case a `processed_emails` record is ever missing.
+
+### `settings`
+Key/value store for OAuth tokens and URNs.
 
 ---
 
@@ -185,40 +229,96 @@ All variables must be set in Railway → Project → Service → Variables. They
 ### Flow
 1. Connect to IMAP over SSL (port 993)
 2. UID SEARCH for all messages received in the last 7 days — `client.search({ since }, { uid: true })` returns actual UIDs, not sequence numbers (passing `{ uid: true }` is required; without it, Dreamhost returns sequence numbers that don't match UIDs and every download fails)
-3. Fetch raw RFC822 source for all matched UIDs in one command — `client.fetch(uids, { source: true }, { uid: true })` yields each message as a Buffer on `message.source`
+3. Fetch raw RFC822 source for all matched UIDs — `client.fetch(uids, { source: true }, { uid: true })` yields each message as a Buffer on `message.source`
 4. For each message, compute its dedup key from the `Message-ID` header (falls back to a SHA-1 hash of `subject|date|from` if the header is absent)
-5. Skip messages whose ID is already in the `processed_emails` table
+5. Skip messages whose ID is already in `processed_emails` OR whose `email_message_id` appears in any `content` row (including deleted) — this double-check prevents reprocessing if a `processed_emails` record is ever missing
 6. Parse body: prefer `text/plain`, fall back to stripping HTML
 7. Strip email signature: search for the two-line consecutive pattern unique to each sender (see below) and discard everything from that point onward
 8. Sanitize: remove `\n`, `\r`, `\t` (matches the Make.com Tools module formula)
-9. Extract image attachments (jpeg/png/gif/webp, max 4 MB each, max 5 per email)
-10. Send subject + body + images to Claude via the Messages API
-11. Parse Claude's JSON response (7 fields)
-12. Write to `content` table with status `Draft`
-13. Record the `Message-ID` in `processed_emails`
+9. Extract image attachments (jpeg/png/gif/webp, max 4 MB each, max 5 for Claude, max 3 stored)
+10. Send subject + body + images to Claude via the Messages API (max 5 images, base64 encoded)
+11. Parse Claude's JSON response (8 fields)
+12. Convert up to 3 image attachments to base64 and store as JSON in the `images` column
+13. Write to `content` table (status `Draft`) with `email_message_id` set
+14. Record the `Message-ID` in `processed_emails`
 
 ### Email signature stripping
-Before the body is sent to Claude or used for URL extraction, the signature is stripped using a two-line consecutive pattern. Matching the title line (not just the name) prevents false positives if either name appears in quoted text:
-
 ```
 Fabrice G. Frere\nCreative Director | PlanetFab Studio
 Michelle Keller\nArt Director | PlanetFab Studio
 ```
-
-`[ \t]*\r?\n` tolerates trailing spaces and handles both CRLF and LF line endings. Everything from the match position onward is discarded. Implemented in `src/email-watcher.js` as `SIG_RE`, applied after body assembly and before sanitization.
+`[ \t]*\r?\n` tolerates trailing spaces and handles both CRLF and LF line endings. Everything from the match position onward is discarded. Implemented in `src/email-watcher.js` as `SIG_RE`.
 
 ### IMAP implementation note
-`imapflow`'s `download()` API returns `{}` (empty object) when a message is not found, causing `content = undefined` and a `Cannot read properties of undefined (reading 'Symbol(Symbol.asyncIterator)')` error. The fix (committed June 5 2026) is to use `client.fetch()` with `{ source: true }`, which returns each message's full RFC822 source as a `Buffer` on `message.source`.
+`imapflow`'s `download()` API returns `{}` (empty object) when a message is not found. The fix is to use `client.fetch()` with `{ source: true }`, which returns each message's full RFC822 source as a `Buffer` on `message.source`.
 
 ### Claude system prompt
-The exact system prompt from the working Make.com scenario is preserved verbatim in `src/claude.js`. It produces all seven output fields: `section_name`, `piece_title`, `newsletter_blurb`, `linkedin_hook`, `instagram_caption`, `blog_potential`, `source_urls`.
+The system prompt in `src/claude.js` produces **8 output fields**:
 
-The `linkedin_hook` field now contains a complete, ready-to-publish LinkedIn post (150–250 words, three-move structure, hashtags), not just a short hook.
+| Field | Description |
+|---|---|
+| `section_name` | Newsletter section name |
+| `piece_title` | Headline |
+| `newsletter_blurb` | 150-word newsletter entry in Michelle's voice |
+| `linkedin_hook` | Complete LinkedIn post, 150–250 words + hashtags |
+| `instagram_caption` | Instagram caption |
+| `blog_potential` | Yes/No + expansion notes |
+| `source_urls` | All URLs extracted from the email body |
+| `blog_post` | 600–800 word journalistic article in plain text with `\n\n` paragraph breaks |
 
-### Image support
-When an email contains image attachments, they are passed to Claude as base64 `image` content blocks before the text. Claude can describe and reference the image as source material. Images are not stored anywhere after processing — see Known Limitations.
+`max_tokens` is set to 4000 to accommodate the full blog post alongside the other fields.
 
-Image-only emails (no text body) are also supported: they are sent to Claude with an analysis prompt so newsletter content is generated from visual inspiration alone.
+---
+
+## Image Handling
+
+### Storage
+Images from email attachments are stored as base64 in the `images` TEXT column (JSON array). Up to 3 images are stored per card. Each entry: `{ data: base64string, contentType, filename }`.
+
+The `getImageSrc(img)` function in `app.js` is the **single swap point** for the storage format — it returns `img.url || data:${img.contentType};base64,${img.data}`. When migrating to Cloudflare R2 or S3, only this function and the `storedImages` builder in `email-watcher.js` need to change.
+
+The `express.json` body size limit is set to `50mb` to handle base64 image arrays in PUT requests.
+
+### Card display
+Each card shows up to 3 thumbnail images. Clicking a thumbnail opens a full-screen lightbox with previous/next navigation, a download button, and a counter. The lightbox is keyboard-navigable (←/→/Escape) and touch-friendly on mobile (nav buttons are positioned absolute over the image, not alongside it).
+
+### Edit modal image management
+- Up to 3 images per card — shown as thumbnails with an × remove button
+- **Hero badge** on the first thumbnail — the first image is always the featured/hero image
+- **Drag to reorder** using the Pointer Events API (`setPointerCapture` routes all move/up events regardless of pointer position; `touch-action: none` prevents scroll competition on mobile). Reorder logic uses splice with no-change detection for `dropIdx === srcIdx` and `dropIdx === srcIdx + 1`.
+- **Add Image** button — opens a file picker for JPEG/PNG/WebP (max 3 total). Files are converted to base64 client-side via FileReader. Manually added images are NOT sent to Claude for analysis.
+
+### LinkedIn image publishing
+When publishing to LinkedIn and the card has images, the first image is resized to **1200×627** (cover crop, 85% JPEG quality via `sharp`) and uploaded via the 3-step LinkedIn media API: register upload slot → PUT binary to pre-signed URL → create post with `shareMediaCategory: IMAGE`. Falls back to text-only post if no images or upload fails.
+
+### WordPress image publishing
+- **First image**: resized to **1536×1024** JPEG → uploaded to WP media library → set as `featured_media`
+- **Additional images (2nd, 3rd)**: uploaded at original size/format → embedded as `<!-- wp:image -->` Gutenberg blocks after the first paragraph of the post body
+- Individual image upload failures are non-blocking (null is pushed to keep index alignment)
+
+---
+
+## WordPress Integration
+
+### Two-author publishing
+Each card has two blog buttons: **Blog as Fabrice** and **Blog as Michelle**. Both create a WordPress draft post using separate Application Passwords:
+
+| Button | Credentials used | Byline |
+|---|---|---|
+| Blog as Fabrice | `WORDPRESS_USERNAME` + `WORDPRESS_APP_PASSWORD` | Fabrice Frere |
+| Blog as Michelle | `WORDPRESS_MICHELLE_USERNAME` + `WORDPRESS_MICHELLE_APP_PASSWORD` | Michelle Keller |
+
+### Post content
+WordPress receives the `blog_post` field as the post body (not `newsletter_blurb`). If `blog_post` is Quill HTML (starts with `<`), it is sent as-is with inline image blocks injected after the first `</p>`. If `blog_post` is plain text (pre-edit), it is wrapped in Gutenberg `<!-- wp:paragraph -->` blocks. If `blog_post` is empty, falls back to `newsletter_blurb`.
+
+On success, the WordPress editor opens in a new tab pointed at the draft. No approval status is required.
+
+### Generating an Application Password
+1. Log in to `planetfab.com/wp-admin`
+2. Go to **Users → Profile**
+3. Scroll to **Application Passwords**
+4. Enter a name (e.g. `Subscribe for Vibes Hub`) and click **Add New Application Password**
+5. Copy the generated password (shown only once, format: `xxxx xxxx xxxx xxxx xxxx xxxx`)
 
 ---
 
@@ -236,21 +336,11 @@ Image-only emails (no text body) are also supported: they are sent to Claude wit
 | Michelle Keller | Personal | `hub.planetfab.com/auth/linkedin/michelle` | **Needs reconnect** — token expired or not yet re-authorized |
 | PlanetFab Studio | Company page | `hub.planetfab.com/auth/linkedin/planetfab` | Pending Marketing Developer Platform approval |
 
-### Connecting an account (one-time per person)
-1. Go to `hub.planetfab.com/settings`
-2. Ensure `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` are set in Railway
-3. Click **Connect via OAuth** on the relevant card
-4. LinkedIn login page appears → user logs in and approves
-5. Callback auto-resolves the person's URN from `/v2/userinfo` (personal accounts) or detects the managed organization (company page)
-6. Token and URN are stored in the `settings` database table
-
 ### Token lifetime
-LinkedIn personal access tokens expire. The exact duration depends on the app's approval level — typically 60 days for standard apps. When a publish attempt fails with an auth error, the user must re-connect via `/settings`.
+LinkedIn personal access tokens expire (~60 days for standard apps). When a publish attempt fails with an auth error, re-connect via `/settings`.
 
 ### Known limitation — PlanetFab Company Page
-Posting to a LinkedIn Organization (company page) requires the `w_organization_social` scope, which requires the LinkedIn app to be reviewed and approved for **Marketing Developer Platform** access. This is a separate LinkedIn approval process beyond the standard "Share on LinkedIn" permission.
-
-**Until that approval is granted**, the PlanetFab company page publish button will fail with a permissions error. Fabrice and Michelle's personal posts will work once OAuth is completed.
+Posting to a LinkedIn Organization requires the `w_organization_social` scope and Marketing Developer Platform approval. Until granted, the PF LinkedIn button will fail. Personal posts (Fabrice and Michelle) work once OAuth is complete.
 
 ---
 
@@ -261,141 +351,99 @@ Posting to a LinkedIn Organization (company page) requires the `w_organization_s
 - Redirect URI: `https://hub.planetfab.com/auth/instagram/callback`
 - Instagram account: `@planetfab` (Business account, connected to a Facebook Page)
 
-### Connecting Instagram (one-time)
-1. Add `META_APP_SECRET` to Railway environment variables
-2. Go to `hub.planetfab.com/settings`
-3. Click **Connect via Facebook OAuth**
-4. Facebook login → approve permissions
-5. Callback fetches managed Facebook Pages → finds connected Instagram Business Account → stores the permanent page-level access token
-
 ### Token lifetime
-The **page-level access token** obtained through this flow does not expire (Meta's policy for page tokens derived from long-lived user tokens). However, the underlying user token expires after 60 days. If Meta ever invalidates the page token, re-connect from `/settings`.
+The page-level access token does not expire under normal conditions. If Meta invalidates it, re-connect from `/settings`.
 
 ### Known limitation — Meta App Review
-The Meta app is currently in **Development mode**. In development mode, only users listed as App Admins or Testers in the Meta Developer dashboard can authenticate. The `instagram_content_publish` permission requires **Meta App Review** before any non-admin Facebook account can use it.
+The Meta app is in **Development mode**. Only Facebook accounts listed as App Admins or Testers can authenticate. The `instagram_content_publish` permission requires Meta App Review before production use.
 
-**To go live with Instagram publishing:**
-1. Complete the Meta App Review for `instagram_content_publish` and `pages_read_engagement`
-2. Switch the app to **Live mode** in the Meta Developer dashboard
-3. Ensure the redirect URI `https://hub.planetfab.com/auth/instagram/callback` is registered under Facebook Login → Settings → Valid OAuth Redirect URIs
-
-Until review is approved, Instagram publishing only works if the Facebook account being used is listed as an admin or tester of the Meta app (App ID `962437633354825`).
-
----
-
-## WordPress Integration
-
-### How it works
-The **Save to Blog** button on each content card calls `POST /api/publish/blog/:id`, which sends a `POST` to `https://www.planetfab.com/wp-json/wp/v2/posts` with:
-- `title`: the `piece_title` field
-- `content`: the `newsletter_blurb` field
-- `status`: `draft`
-
-Authentication uses HTTP Basic Auth with a WordPress **Application Password** — not the account password.
-
-### Generating an Application Password
-1. Log in to `planetfab.com/wp-admin`
-2. Go to **Users → Profile**
-3. Scroll to **Application Passwords**
-4. Enter a name (e.g. `Subscribe for Vibes Hub`) and click **Add New Application Password**
-5. Copy the generated password (shown only once, format: `xxxx xxxx xxxx xxxx xxxx xxxx`)
-6. Add to Railway:
-   - `WORDPRESS_USERNAME` = your WordPress username
-   - `WORDPRESS_APP_PASSWORD` = the generated password (spaces are fine)
-
-### What happens after saving
-On success, the WordPress editor opens in a new browser tab pointed directly at the draft. No approval status is required — any content (Draft, Approved, or Published) can be saved to WordPress.
+**To go live:**
+1. Complete Meta App Review for `instagram_content_publish` and `pages_read_engagement`
+2. Switch app to **Live mode** in the Meta Developer dashboard
 
 ---
 
 ## Dashboard Features
 
 ### Content cards
-Each card displays: piece title, status badge, section name, newsletter blurb (preview), LinkedIn hook (preview), blog potential, source URLs, and creation date.
+Each card displays all content fields with labeled rows: Newsletter Blurb, LinkedIn Post, Instagram Caption, Blog Post, Blog Potential, and Source URLs. Each field label has a **copy-to-clipboard button** (permanent clipboard icon — always visible for mobile compatibility). Clicking copies the full field text; the icon swaps to a green checkmark for 2 seconds. Blog Post HTML is stripped to plain text before copying.
 
 ### Status workflow
 `Draft` → (click Approve) → `Approved` → (publish to a channel) → `Published`  
 At any point, content can also be marked `Newsletter Ready`.  
-Save to Blog works regardless of status.
+Blog buttons work regardless of status.
 
-### Editing
-Click **Edit** on any card to open a full-field editor with a live word count for the newsletter blurb (target: 150 words).
+### Edit modal
+Full-field editor with:
+- Live word count for newsletter blurb (target: 150 words)
+- Auto-grow textarea for Blog Potential
+- **Quill.js rich text editor** for Blog Post — supports bold, italic, underline, H2/H3 headings, and hyperlinks. Saves as HTML. Claude's plain-text output is auto-converted to `<p>` tags on first open.
+- Image thumbnails with Hero badge, × remove, drag-to-reorder, and Add Image button
 
 ### Mobile layout
-The edit modal is fully usable on small screens: it uses `max-width: 100%` (not `100vw`) to avoid the iOS scrollbar-width overflow. All textareas have `resize: vertical` via explicit ID-selector rules (required because `appearance: none` on the shared `.field textarea` reset strips WebKit's native resize grip). All inputs and textareas have `font-size: 16px` on mobile to prevent iOS viewport zoom on focus.
+Edit modal uses `max-width: 100%` (not `100vw`) to avoid the iOS scrollbar-width overflow. Textareas have `resize: vertical` via explicit ID-selector rules. All inputs have `font-size: 16px` on mobile to prevent iOS viewport zoom.
 
 ### Deleting and Trash
-- **Single**: click **Delete** on a card → named confirmation modal → card moves to Trash (soft-delete: `deleted_at` is set in PostgreSQL; `getAll` filters with `WHERE deleted_at IS NULL`)
-- **Bulk**: click **Select** in the header → cards show checkboxes → select individually or use **Select All** → click **Delete N Items** → confirmation modal. Press Escape to exit bulk mode.
-- **Trash tab**: filter button at the right of the filter bar. Shows all soft-deleted cards with a countdown to auto-purge.
-- **Restore**: from Trash, click **Restore** to bring a card back to its original status.
-- **Delete Forever**: permanently removes a card from the database (irreversible).
-- **Empty Trash**: permanently deletes all items in Trash at once.
-- **Auto-purge**: a daily cron job at 3 am purges Trash items older than 5 days.
-- **Persistence**: deletes execute against PostgreSQL when `DATABASE_URL` is set. In the in-memory fallback (local dev without `DATABASE_URL`), soft-deletes work within a session but are lost on restart.
+- **Single**: card moves to Trash (soft-delete: `deleted_at` set)
+- **Bulk**: Select mode → checkboxes → Delete N Items
+- **Trash**: filter tab showing deleted cards with 5-day countdown. Restore or Delete Forever.
+- **Auto-purge**: daily cron at 3 am purges items older than 5 days.
 
 ### Publishing buttons (per card)
 | Button | Destination | Requires |
 |---|---|---|
-| PF LinkedIn | PlanetFab company page | Approved + LinkedIn company page OAuth (pending review) |
+| PF LinkedIn | PlanetFab company page | Approved + Marketing Developer Platform approval (pending) |
 | Fabrice LI | Fabrice's personal LinkedIn | Approved + Fabrice LinkedIn OAuth |
-| Michelle LI | Michelle's personal LinkedIn | Approved + Michelle LinkedIn OAuth |
+| Michelle LI | Michelle's personal LinkedIn | Approved + Michelle LinkedIn OAuth (needs reconnect) |
 | Instagram | @planetfab Instagram | Approved + Instagram OAuth (pending Meta review) |
 | Newsletter | Marks as Newsletter Ready | Approved |
-| Save to Blog | planetfab.com WordPress draft | None — works on any status |
+| Blog as Fabrice | planetfab.com WordPress draft (Fabrice byline) | None — works on any status |
+| Blog as Michelle | planetfab.com WordPress draft (Michelle byline) | None — works on any status |
 
 ---
 
 ## Known Limitations
 
 ### 1. Instagram blocked by Meta App Review
-The Meta app must pass App Review for `instagram_content_publish` before it works in production. This is a Meta process that can take 1–4 weeks. Until then, Instagram publishing only works for Facebook accounts listed as admins/testers of the Meta app.
+The Meta app must pass App Review for `instagram_content_publish` before it works in production. Until then, Instagram publishing only works for Facebook accounts listed as admins/testers of Meta app `962437633354825`.
 
 ### 2. LinkedIn company page requires Marketing Developer Platform access
-Posting to the PlanetFab LinkedIn organization page requires LinkedIn's Marketing Developer Platform tier. Apply at `linkedin.com/developers` → Products → Marketing Developer Platform. Until approved, only personal LinkedIn posts (Fabrice and Michelle) work.
+Posting to the PlanetFab LinkedIn organization page requires LinkedIn's Marketing Developer Platform tier. Until approved, only personal LinkedIn posts (Fabrice and Michelle) work.
 
 ### 3. In-memory fallback without PostgreSQL
-When `DATABASE_URL` is not set, the app falls back to in-memory storage and emits a console warning. All content, settings, and processed-email records are stored in-memory and lost on every restart or redeploy. OAuth tokens stored via `/settings` are also lost. The in-memory fallback exists intentionally so the app can be run locally without a database. **On Railway, the PostgreSQL addon must be added for data to persist — this is the first production step.**
+When `DATABASE_URL` is not set, all data is stored in-memory and lost on every restart. On Railway, the PostgreSQL addon must be added for persistence.
 
 ### 4. LinkedIn tokens expire (~60 days)
-LinkedIn access tokens are not permanent. Each person will need to re-authorize via `/settings` approximately every 60 days. The app shows an error on the card when a token is expired — just click Reconnect on the Settings page.
+Each person will need to re-authorize via `/settings` approximately every 60 days.
 
-### 5. Email images not persisted
-When emails contain image attachments, they are passed to Claude for analysis at processing time but are not stored anywhere afterward. The image cannot be retrieved or displayed later. See Features Still to Build.
+### 5. Images stored as base64 in PostgreSQL (not object storage)
+Email attachment images are stored as base64 JSON in the `images` column — up to 3 images, up to ~4 MB each. This works for the current two-person usage but will become unwieldy at scale. The `getImageSrc()` function in `app.js` is the designated swap point for migrating to Cloudflare R2 or S3: change it and the `storedImages` builder in `email-watcher.js`, nothing else.
 
 ### 6. No Notion integration in this version
-The original Make.com pipeline wrote to a Notion database (`the-database`, ID `372bf6f10d8f80728ef6f0dedcd8bae2`). This app does not currently write to Notion. The Make.com scenario still does, as it is running in parallel.
+The original Make.com pipeline wrote to a Notion database (`the-database`, ID `372bf6f10d8f80728ef6f0dedcd8bae2`). This app does not write to Notion. The Make.com scenario still does.
 
 ### 7. Single-region, no CDN
-Railway Hobby plan runs in a single region. No CDN is configured. Static assets (CSS, JS) are served directly by Express. Acceptable for a two-person private tool; not suitable for public traffic.
+Railway Hobby plan runs in a single region. Static assets are served directly by Express. Acceptable for a two-person private tool.
 
 ---
 
 ## Features Still to Build
 
-### 1. Image thumbnails on content cards
-**Current state:** Image attachments are passed to Claude during processing but no reference to the image is stored. Cards show text only.  
-**Desired state:** If an email contained an image, a thumbnail should appear on the card and in the edit modal.  
-**Requires:** Persistent image storage (see below) + `image_urls` column in the `content` table + `<img>` thumbnail in `cardHTML()`.
+### 1. Migrate image storage to Cloudflare R2 or S3
+**Current state:** Base64 in PostgreSQL `images` column — functional but not scalable.  
+**Desired state:** Upload each image to R2/S3 at processing time; store public URL in the database.  
+**Swap points:** `getImageSrc(img)` in `app.js` (display) and the `storedImages` builder in `email-watcher.js` (write). Required env vars: bucket name, region, access key, secret key.
 
-### 2. Persistent image storage (S3 / Cloudflare R2)
-**Current state:** Images from email attachments live only in memory during the Claude API call and are then discarded.  
-**Desired state:** Upload each image to an S3-compatible object store (AWS S3 or Cloudflare R2) at processing time and store the public URL in the database.  
-**Implementation sketch:**
-- Add `image_urls TEXT` column to the `content` table (migration: `ALTER TABLE content ADD COLUMN IF NOT EXISTS image_urls TEXT`)
-- In `email-watcher.js`, after `processContent()`, upload each image and collect public URLs
-- Pass them to `db.create()` as `image_urls` (comma-separated or JSON array)
-- Render in cards as `<img src="...">` thumbnails
-- Required env vars: `S3_BUCKET`, `S3_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (or R2 equivalents)
+### 2. Image asset management — artwork vs. analysis distinction
+**Current state:** All attachments are treated identically.  
+**Desired state:** Distinguish finished assets (photography, design exports) from analysis references (mood boards, screenshots). Artwork should be preserved; references can be discarded after processing.
 
-### 3. Image asset management — artwork vs. analysis distinction
-**Current state:** All image attachments are treated identically and passed to Claude as visual inspiration.  
-**Desired state:** Distinguish between (a) **artwork / finished assets** (photography, illustrations, design exports intended for direct use in posts) and (b) **analysis references** (screenshots, mood boards, reference images used only to inform the written content). Artwork should be preserved and linked; analysis references can be discarded after processing.  
-**Requires:** A UI flag or metadata field on the card (e.g. `image_type: artwork | reference`) and corresponding storage/display logic.
+### 3. Platform-specific crop tools
+**Current state:** `sharp` resizes to fixed dimensions on publish. No user-controlled crop.  
+**Desired state:** Crop/resize UI in the edit modal with preset aspect ratios per platform (Instagram square, LinkedIn banner, WordPress featured image) before publishing.
 
-### 4. Platform-specific crop tools
-**Current state:** Images are stored as-is; no resizing or cropping occurs.  
-**Desired state:** When preparing an image for a specific platform (Instagram square, LinkedIn banner, WordPress featured image), provide a crop/resize UI in the edit modal with preset aspect ratios per platform before publishing.
+### 4. Notion sync
+Write processed content to the Notion database as a parallel record, replacing the Make.com automation entirely.
 
 ---
 
@@ -421,7 +469,7 @@ npm run dev
 npm start
 ```
 
-App runs at `http://localhost:3000`. Database defaults to in-memory — data is lost on restart. Set `DATABASE_URL` in `.env` to use a local or remote PostgreSQL instance if needed.
+App runs at `http://localhost:3000`. Database defaults to in-memory — data is lost on restart. Set `DATABASE_URL` in `.env` to use a local or remote PostgreSQL instance.
 
 ---
 
@@ -442,11 +490,13 @@ For a fresh Railway deployment or post-handoff setup, complete steps in this ord
 - [x] Check Email button returns content
 - [x] LinkedIn OAuth completed for Fabrice (`/auth/linkedin/fabrice`)
 - [ ] LinkedIn OAuth for Michelle — needs to reconnect (`/auth/linkedin/michelle`)
-- [ ] WordPress Application Password generated and `WORDPRESS_USERNAME` + `WORDPRESS_APP_PASSWORD` set
-- [ ] Save to Blog tested — opens WP editor in new tab
-- [ ] Instagram OAuth attempted — if Meta review not yet complete, note this as pending
+- [x] `WORDPRESS_USERNAME` + `WORDPRESS_APP_PASSWORD` set (Fabrice)
+- [ ] `WORDPRESS_MICHELLE_USERNAME` + `WORDPRESS_MICHELLE_APP_PASSWORD` set (Michelle)
+- [ ] Blog as Fabrice tested — opens WP editor in new tab
+- [ ] Blog as Michelle tested — opens WP editor in new tab under Michelle's byline
+- [ ] Instagram OAuth attempted — if Meta review not yet complete, note as pending
 - [ ] Make.com "Integration Email" scenario left running until hub is validated in production
 
 ---
 
-*Built in one session using Claude Code, June 2026.*
+*Built using Claude Code, June 2026.*
