@@ -468,6 +468,12 @@ body.bulk-mode .card-header { padding-left: 26px; }
 }
 
 .copy-btn:hover { color: var(--ink-mid); }
+
+/* In modal field labels, push the copy button to the far right */
+.field label .copy-btn {
+  margin-left: auto;
+  align-self: center;
+}
 .copy-btn:focus-visible { opacity: 1; outline: 2px solid var(--accent); border-radius: 2px; }
 
 .copy-btn .icon-check { display: none; }

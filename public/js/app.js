@@ -122,6 +122,36 @@ async function copyField(btn, id, field) {
   }
 }
 
+// Copies the current live value of a modal field (reads DOM, not allItems).
+// elementId 'quillEditor' is the special case for the Quill rich-text field.
+async function copyModalField(btn, elementId) {
+  let text = '';
+  if (elementId === 'quillEditor') {
+    text = quill ? quill.root.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  } else {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    text = el.value || '';
+  }
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.classList.add('copied');
+    setTimeout(() => btn.classList.remove('copied'), 2000);
+  } catch {
+    showToast('Copy failed', true);
+  }
+}
+
+// Inject SVG icons into modal copy-button placeholders and wire their onclick.
+// Buttons use data-copy-field to identify which element to read from.
+function initModalCopyButtons() {
+  document.querySelectorAll('.copy-btn[data-copy-field]').forEach(btn => {
+    btn.innerHTML = COPY_ICON + CHECK_ICON;
+    btn.onclick = () => copyModalField(btn, btn.dataset.copyField);
+  });
+}
+
 // Renders one labeled field row with a copy button. Skipped when field is empty.
 function cardField(item, field, label, maxLen) {
   let text = item[field] || '';
@@ -845,4 +875,5 @@ document.addEventListener('keydown', e => {
 
 setupImageUpload();
 setupImageDrag();
+initModalCopyButtons();
 init();
