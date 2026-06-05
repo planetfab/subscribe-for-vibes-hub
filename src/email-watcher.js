@@ -48,13 +48,18 @@ async function checkEmails() {
         return 0;
       }
 
-      // fetch() with source:true returns the full raw RFC822 message as a Buffer.
-      // uid:true in both query and options keeps everything in UID-space.
-      for await (const message of client.fetch(uids, { source: true, uid: true }, { uid: true })) {
+      // fetch() with source:true returns the full raw RFC822 message as a Buffer on
+      // message.source. uid:true in options makes the range be interpreted as UIDs.
+      // Do not include uid in the query — it is always present in FetchMessageObject.
+      for await (const message of client.fetch(uids, { source: true }, { uid: true })) {
         const uid = message.uid;
         console.log(`[email] Processing uid ${uid}`);
         try {
           const rawBuffer = message.source;
+          if (!rawBuffer) {
+            console.log(`[email] uid ${uid} — server returned no source data, skipping`);
+            continue;
+          }
           console.log(`[email] uid ${uid} — raw size: ${rawBuffer.length} bytes`);
 
           const parsed = await simpleParser(rawBuffer);
