@@ -107,6 +107,15 @@ async function checkEmails() {
               .trim();
           }
 
+          // Strip email signature — both senders end their emails with their full name
+          // followed by phone, Zoom, Google Maps, and portfolio links that must not be
+          // captured as source_urls or sent as context to Claude.
+          const sigIdx = bodyText.search(/Fabrice G\. Frere|Michelle Keller/);
+          if (sigIdx !== -1) {
+            console.log(`[email] uid ${uid} — stripping signature at char ${sigIdx}`);
+            bodyText = bodyText.substring(0, sigIdx).trimEnd();
+          }
+
           // Replicate Make.com sanitization: strip newlines and tabs
           const sanitized = bodyText
             .replace(/\n/g, ' ')
