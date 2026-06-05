@@ -58,6 +58,10 @@ async function init() {
     await pool.query(`
       ALTER TABLE content ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
     `);
+    // Migration: add images for storing base64-encoded email attachments
+    await pool.query(`
+      ALTER TABLE content ADD COLUMN IF NOT EXISTS images TEXT
+    `);
     console.log('PostgreSQL database ready');
   } catch (err) {
     console.error(`PostgreSQL connection failed (${err.message}) — falling back to in-memory store`);
@@ -65,16 +69,29 @@ async function init() {
   }
 }
 
+// Parse a PostgreSQL row: images is stored as a JSON string, return as array.
+// When we migrate from base64 to R2 URLs the shape of each element changes
+// (data → url) but this parser stays the same — callers just get the raw objects.
+function parseRow(row) {
+  if (!row) return null;
+  let images = [];
+  if (row.images) {
+    try { images = JSON.parse(row.images); } catch {}
+  }
+  return { ...row, images };
+}
+
 async function create(data) {
   const id = uuidv4();
   const now = new Date().toISOString();
+  const imagesJson = JSON.stringify(Array.isArray(data.images) ? data.images : []);
 
   if (pool) {
     const { rows } = await pool.query(
       `INSERT INTO content
          (id, piece_title, section_name, newsletter_blurb, linkedin_hook,
-          instagram_caption, blog_potential, source_urls, status, email_subject, raw_content)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10)
+          instagram_caption, blog_potential, source_urls, status, email_subject, raw_content, images)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10,$11)
        RETURNING *`,
       [
         id,
@@ -87,12 +104,13 @@ async function create(data) {
         data.source_urls,
         data.email_subject,
         data.raw_content,
+        imagesJson,
       ]
     );
-    return rows[0];
+    return parseRow(rows[0]);
   }
 
-  const item = { id, ...data, status: 'Draft', created_at: now, updated_at: now };
+  const item = { id, ...data, images: Array.isArray(data.images) ? data.images : [], status: 'Draft', created_at: now, updated_at: now };
   memStore.unshift(item);
   return item;
 }
@@ -102,7 +120,7 @@ async function getAll() {
     const { rows } = await pool.query(
       'SELECT * FROM content WHERE deleted_at IS NULL ORDER BY created_at DESC'
     );
-    return rows;
+    return rows.map(parseRow);
   }
   return memStore.filter(i => !i.deleted_at);
 }
@@ -110,7 +128,7 @@ async function getAll() {
 async function getById(id) {
   if (pool) {
     const { rows } = await pool.query('SELECT * FROM content WHERE id = $1', [id]);
-    return rows[0] || null;
+    return parseRow(rows[0] || null);
   }
   return memStore.find(i => i.id === id) || null;
 }
@@ -134,7 +152,7 @@ async function update(id, data) {
       `UPDATE content SET ${setClauses}, updated_at = NOW() WHERE id = $1 RETURNING *`,
       [id, ...values]
     );
-    return rows[0] || null;
+    return parseRow(rows[0] || null);
   }
 
   const idx = memStore.findIndex(i => i.id === id);
@@ -190,7 +208,7 @@ async function getTrash() {
       'SELECT * FROM content WHERE deleted_at IS NOT NULL AND deleted_at > $1 ORDER BY deleted_at DESC',
       [cutoff]
     );
-    return rows;
+    return rows.map(parseRow);
   }
   return memStore.filter(i => i.deleted_at && new Date(i.deleted_at) > cutoff);
 }
@@ -201,7 +219,7 @@ async function restoreById(id) {
       'UPDATE content SET deleted_at = NULL WHERE id = $1 RETURNING *',
       [id]
     );
-    return rows[0] || null;
+    return parseRow(rows[0] || null);
   }
   const item = memStore.find(i => i.id === id);
   if (!item) return null;

@@ -658,6 +658,109 @@ body.bulk-mode .card-actions { display: none; }
   50%       { opacity: 0.45; }
 }
 
+/* ── Card image thumbnails ──────────────────────────────────────────────── */
+
+.card-images {
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.card-thumb {
+  width: 80px;
+  height: 64px;
+  object-fit: cover;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  display: block;
+  transition: opacity 0.12s;
+}
+
+.card-thumb:hover { opacity: 0.78; }
+
+/* ── Lightbox ────────────────────────────────────────────────────────────── */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 400;
+  gap: 14px;
+  padding: 60px 20px 20px;
+}
+
+.lightbox-close {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.65);
+  font-size: 30px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  z-index: 401;
+}
+.lightbox-close:hover { color: #fff; }
+
+.lightbox-image-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.lightbox-img {
+  max-width: 80vw;
+  max-height: 72vh;
+  object-fit: contain;
+  display: block;
+}
+
+.lightbox-nav {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.55);
+  font-size: 44px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 8px 4px;
+  flex-shrink: 0;
+  user-select: none;
+  transition: color 0.12s;
+}
+.lightbox-nav:hover { color: #fff; }
+
+.lightbox-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.lightbox-counter {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.06em;
+  min-width: 38px;
+  text-align: center;
+}
+
+.lightbox-download {
+  border-color: rgba(255,255,255,0.3) !important;
+  color: rgba(255,255,255,0.75) !important;
+  text-decoration: none;
+}
+.lightbox-download:hover {
+  border-color: #fff !important;
+  color: #fff !important;
+}
+
 /* ── Settings page ──────────────────────────────────────────────────────── */
 
 .settings-page {

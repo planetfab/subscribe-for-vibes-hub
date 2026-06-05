@@ -85,12 +85,21 @@ async function checkEmails() {
 
           // Extract image attachments for Claude vision
           const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+          const MAX_STORED_IMAGES = 3;
           const images = (parsed.attachments || [])
             .filter(a => SUPPORTED_IMAGE_TYPES.has(a.contentType?.toLowerCase()))
             .map(a => ({ data: a.content, contentType: a.contentType.toLowerCase(), filename: a.filename || 'image' }));
           if (images.length > 0) {
             console.log(`[email] uid ${uid} — image attachments: ${images.map(i => `${i.filename} (${Math.round(i.data.length / 1024)}KB)`).join(', ')}`);
           }
+          // Convert up to MAX_STORED_IMAGES images to base64 for database storage.
+          // { data: Buffer } for Claude → { data: base64 string } for the DB.
+          // When migrating to R2, replace this with upload calls and store { url } instead.
+          const storedImages = images.slice(0, MAX_STORED_IMAGES).map(img => ({
+            data: img.data.toString('base64'),
+            contentType: img.contentType,
+            filename: img.filename,
+          }));
 
           console.log(`[email] uid ${uid} — has text: ${!!parsed.text}, has html: ${!!parsed.html}`);
 
@@ -143,7 +152,7 @@ async function checkEmails() {
 
           console.log(`[email] uid ${uid} — sending to Claude${images.length > 0 ? ` with ${images.length} image(s)` : ''}${!sanitized ? ' (image-only)' : ''}`);
           const result = await processContent(subject, contentToProcess, images);
-          await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)' });
+          await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages });
           await db.markEmailProcessed(messageId);
           console.log(`[email] uid ${uid} — stored as "${result.piece_title}"`);
           processed++;

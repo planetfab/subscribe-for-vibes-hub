@@ -101,6 +101,20 @@
     </div>
   </div>
 
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox" style="display:none" onclick="if(event.target===this)closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <div class="lightbox-image-wrap">
+      <button class="lightbox-nav" id="lightboxPrevBtn" onclick="lightboxNav(-1)">&#8249;</button>
+      <img id="lightboxImg" class="lightbox-img" src="" alt="">
+      <button class="lightbox-nav" id="lightboxNextBtn" onclick="lightboxNav(1)">&#8250;</button>
+    </div>
+    <div class="lightbox-footer">
+      <span id="lightboxCounter" class="lightbox-counter"></span>
+      <a id="lightboxDownload" class="lightbox-download btn btn-ghost btn-sm" download>Download</a>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
   <script src="/js/app.js"></script>
 </body>

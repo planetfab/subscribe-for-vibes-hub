@@ -6,6 +6,8 @@ let currentFilter = 'all';
 let bulkMode = false;
 let selectedIds = new Set();
 let toastTimer = null;
+let lightboxImages = [];
+let lightboxIdx = 0;
 
 /* ── Bootstrap ──────────────────────────────────────────────────────────── */
 
@@ -93,6 +95,17 @@ function renderCards() {
   grid.innerHTML = items.map(cardHTML).join('');
 }
 
+/* ── Image helpers ──────────────────────────────────────────────────────── */
+
+// Single swap point: returns a displayable URL for a stored image object.
+// Current format: { data: base64string, contentType, filename }
+// Future R2 format: { url: "https://...", contentType, filename }
+// When migrating to R2, this function and the storedImages builder in
+// email-watcher.js are the only two places that need to change.
+function getImageSrc(img) {
+  return img.url || `data:${img.contentType};base64,${img.data}`;
+}
+
 function statusClass(status) {
   const map = { 'Draft': 'status-draft', 'Approved': 'status-approved', 'Published': 'status-published', 'Newsletter Ready': 'status-newsletter' };
   return map[status] || 'status-draft';
@@ -127,6 +140,7 @@ function cardHTML(item) {
     </div>
   </div>
   ${urls.length ? `<div class="source-urls">${urls.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join('')}</div>` : ''}
+  ${item.images?.length ? `<div class="card-images">${item.images.map((img, i) => `<img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}" onclick="openLightbox('${item.id}',${i})">`).join('')}</div>` : ''}
   ${item.created_at ? `<div class="card-date">${formatDate(item.created_at)}</div>` : ''}
   <div class="card-actions">
     <button class="btn btn-ghost btn-sm" onclick="openEdit('${item.id}')">Edit</button>
@@ -523,6 +537,41 @@ async function checkEmail() {
   }, 2500);
 }
 
+/* ── Lightbox ───────────────────────────────────────────────────────────── */
+
+function openLightbox(itemId, idx) {
+  const item = allItems.find(i => i.id === itemId);
+  if (!item?.images?.length) return;
+  lightboxImages = item.images;
+  lightboxIdx = idx;
+  renderLightbox();
+  document.getElementById('lightbox').style.display = 'flex';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+}
+
+function lightboxNav(delta) {
+  lightboxIdx = (lightboxIdx + delta + lightboxImages.length) % lightboxImages.length;
+  renderLightbox();
+}
+
+function renderLightbox() {
+  const img = lightboxImages[lightboxIdx];
+  const src = getImageSrc(img);
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightboxImg').alt = img.filename || 'Image';
+  const dl = document.getElementById('lightboxDownload');
+  dl.href = src;
+  dl.download = img.filename || 'image';
+  const n = lightboxImages.length;
+  const multi = n > 1;
+  document.getElementById('lightboxCounter').textContent = multi ? `${lightboxIdx + 1} / ${n}` : '';
+  document.getElementById('lightboxPrevBtn').style.display = multi ? '' : 'none';
+  document.getElementById('lightboxNextBtn').style.display = multi ? '' : 'none';
+}
+
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
 function mergeItem(updated) {
@@ -552,6 +601,12 @@ function showToast(msg, error = false) {
 /* ── Keyboard shortcuts ─────────────────────────────────────────────────── */
 
 document.addEventListener('keydown', e => {
+  if (document.getElementById('lightbox').style.display !== 'none') {
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') lightboxNav(-1);
+    if (e.key === 'ArrowRight') lightboxNav(1);
+    return;
+  }
   if (e.key === 'Escape') { closeModal(); closeConfirm(); if (bulkMode) toggleBulkMode(); }
 });
 
