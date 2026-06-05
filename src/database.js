@@ -143,11 +143,15 @@ async function update(id, data) {
   const safe = Object.fromEntries(
     Object.entries(data).filter(([k]) => ALLOWED_COLUMNS.has(k))
   );
-  if (!Object.keys(safe).length) return null;
+  // images is a JSON column — serialize for PG but handled separately for in-memory
+  const hasImages = Array.isArray(data.images);
+  if (!Object.keys(safe).length && !hasImages) return null;
 
   if (pool) {
-    const setClauses = Object.keys(safe).map((k, i) => `${k} = $${i + 2}`).join(', ');
-    const values = Object.values(safe);
+    const pgSafe = { ...safe };
+    if (hasImages) pgSafe.images = JSON.stringify(data.images);
+    const setClauses = Object.keys(pgSafe).map((k, i) => `${k} = $${i + 2}`).join(', ');
+    const values = Object.values(pgSafe);
     const { rows } = await pool.query(
       `UPDATE content SET ${setClauses}, updated_at = NOW() WHERE id = $1 RETURNING *`,
       [id, ...values]
@@ -157,7 +161,9 @@ async function update(id, data) {
 
   const idx = memStore.findIndex(i => i.id === id);
   if (idx === -1) return null;
-  memStore[idx] = { ...memStore[idx], ...safe, updated_at: new Date().toISOString() };
+  const merged = { ...memStore[idx], ...safe, updated_at: new Date().toISOString() };
+  if (hasImages) merged.images = data.images;
+  memStore[idx] = merged;
   return memStore[idx];
 }
 

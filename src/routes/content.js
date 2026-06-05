@@ -69,6 +69,10 @@ router.put('/:id', async (req, res) => {
     for (const key of EDITABLE_FIELDS) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
     }
+    // Allow the edit modal to remove images (sends updated array after X-button deletions)
+    if (Array.isArray(req.body.images)) {
+      data.images = req.body.images;
+    }
     const updated = await db.update(req.params.id, data);
     if (!updated) return res.status(404).json({ error: 'Not found' });
     res.json(updated);

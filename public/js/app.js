@@ -8,6 +8,7 @@ let selectedIds = new Set();
 let toastTimer = null;
 let lightboxImages = [];
 let lightboxIdx = 0;
+let editImages = [];
 
 /* ── Bootstrap ──────────────────────────────────────────────────────────── */
 
@@ -380,6 +381,8 @@ function openEdit(id) {
   bpField.value = item.blog_potential || '';
   document.getElementById('editSourceUrls').value = item.source_urls || '';
   document.getElementById('editStatus').value = item.status || 'Draft';
+  editImages = [...(item.images || [])];
+  renderEditImages();
   updateBlurbCount();
   document.getElementById('editModal').style.display = 'flex';
   // Auto-size blog potential after the modal is painted — scrollHeight is 0 while display:none
@@ -388,6 +391,27 @@ function openEdit(id) {
     bpField.style.height = bpField.scrollHeight + 'px';
   });
   document.getElementById('editPieceTitle').focus();
+}
+
+function renderEditImages() {
+  const section = document.getElementById('editImagesSection');
+  const container = document.getElementById('editImages');
+  if (!editImages.length) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  container.innerHTML = editImages.map((img, i) => `
+    <div class="edit-thumb-wrap">
+      <img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}">
+      <button type="button" class="edit-thumb-remove" onclick="removeEditImage(${i})" aria-label="Remove image">&times;</button>
+    </div>
+  `).join('');
+}
+
+function removeEditImage(idx) {
+  editImages.splice(idx, 1);
+  renderEditImages();
 }
 
 function closeModal() {
@@ -423,6 +447,7 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     blog_potential: document.getElementById('editBlogPotential').value,
     source_urls: document.getElementById('editSourceUrls').value,
     status: document.getElementById('editStatus').value,
+    images: editImages,
   };
   try {
     const updated = await apiFetch(`/api/content/${id}`, { method: 'PUT', body: payload });
@@ -546,10 +571,12 @@ function openLightbox(itemId, idx) {
   lightboxIdx = idx;
   renderLightbox();
   document.getElementById('lightbox').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
 }
 
 function closeLightbox() {
   document.getElementById('lightbox').style.display = 'none';
+  document.body.style.overflow = '';
 }
 
 function lightboxNav(delta) {
