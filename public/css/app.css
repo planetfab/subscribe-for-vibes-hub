@@ -412,6 +412,7 @@ body.bulk-mode .card-header { padding-left: 26px; }
   letter-spacing: 0.14em;
 }
 
+/* .card-blurb kept for trash cards */
 .card-blurb {
   font-size: 12px;
   line-height: 1.65;
@@ -419,28 +420,67 @@ body.bulk-mode .card-header { padding-left: 26px; }
   overflow-wrap: break-word;
 }
 
-.card-meta {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+/* ── Card labeled field rows (main cards) ───────────────────────────────── */
+
+.card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
-.meta-label {
+.card-field-hd {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 1px;
+}
+
+.card-field-label {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--ink-faint);
-  margin-bottom: 2px;
+  flex: 1;
 }
 
-.meta-value {
+.card-field-val {
   font-size: 11px;
   color: var(--ink-mid);
   line-height: 1.4;
   overflow-wrap: break-word;
-  min-width: 0;
 }
+
+/* ── Copy button ────────────────────────────────────────────────────────── */
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--ink-faint);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.card-field-hd:hover .copy-btn { opacity: 1; }
+.copy-btn:hover { color: var(--ink-mid); }
+.copy-btn:focus-visible { opacity: 1; outline: 2px solid var(--accent); border-radius: 2px; }
+
+.copy-btn .icon-check { display: none; }
+
+.copy-btn.copied {
+  opacity: 1;
+  color: #2e7d32;
+}
+
+.copy-btn.copied .icon-copy { display: none; }
+.copy-btn.copied .icon-check { display: inline-flex; }
 
 .source-urls {
   display: flex;

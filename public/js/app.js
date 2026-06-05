@@ -97,6 +97,45 @@ function renderCards() {
   grid.innerHTML = items.map(cardHTML).join('');
 }
 
+/* ── Copy-to-clipboard helpers ──────────────────────────────────────────── */
+
+const COPY_ICON = `<svg class="icon-copy" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const CHECK_ICON = `<svg class="icon-check" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+function copyBtn(id, field) {
+  return `<button type="button" class="copy-btn" onclick="copyField(this,'${id}','${field}')" title="Copy">${COPY_ICON}${CHECK_ICON}</button>`;
+}
+
+async function copyField(btn, id, field) {
+  const item = allItems.find(i => i.id === id);
+  if (!item) return;
+  let text = item[field] || '';
+  // Blog post is stored as Quill HTML — strip tags for plain-text clipboard
+  if (field === 'blog_post') text = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.classList.add('copied');
+    setTimeout(() => btn.classList.remove('copied'), 2000);
+  } catch {
+    showToast('Copy failed', true);
+  }
+}
+
+// Renders one labeled field row with a copy button. Skipped when field is empty.
+function cardField(item, field, label, maxLen) {
+  let text = item[field] || '';
+  if (field === 'blog_post') text = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const preview = text.length > maxLen ? esc(text.substring(0, maxLen)) + '&hellip;' : esc(text);
+  return `<div class="card-field">
+  <div class="card-field-hd">
+    <span class="card-field-label">${label}</span>${copyBtn(item.id, field)}
+  </div>
+  <div class="card-field-val">${preview}</div>
+</div>`;
+}
+
 /* ── Image helpers ──────────────────────────────────────────────────────── */
 
 // Single swap point: returns a displayable URL for a stored image object.
@@ -117,44 +156,45 @@ function cardHTML(item) {
   const isApproved = item.status === 'Approved';
   const dis = isApproved ? '' : 'disabled title="Approve content first"';
   const urls = (item.source_urls || '').split(',').map(u => u.trim()).filter(Boolean);
-  const blurb = (item.newsletter_blurb || '').substring(0, 200);
-  const blurbTrunc = (item.newsletter_blurb || '').length > 200;
-  const hook = (item.linkedin_hook || '').substring(0, 180);
   const isSelected = selectedIds.has(item.id);
+  const id = item.id;
+
+  const sourceField = urls.length ? `<div class="card-field">
+  <div class="card-field-hd">
+    <span class="card-field-label">Source URLs</span>${copyBtn(id, 'source_urls')}
+  </div>
+  <div class="card-field-val source-urls">${urls.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join('')}</div>
+</div>` : '';
 
   return `
-<div class="card${isSelected ? ' selected' : ''}" id="card-${item.id}" onclick="handleCardClick(event,'${item.id}')">
+<div class="card${isSelected ? ' selected' : ''}" id="card-${id}" onclick="handleCardClick(event,'${id}')">
   <div class="card-checkbox"></div>
   <div class="card-header">
     <h3 class="card-title">${esc(item.piece_title || 'Untitled')}</h3>
     <span class="status-badge ${statusClass(item.status)}">${esc(item.status || 'Draft')}</span>
   </div>
   ${item.section_name ? `<div class="section-tag">${esc(item.section_name)}</div>` : ''}
-  <p class="card-blurb">${esc(blurb)}${blurbTrunc ? '&hellip;' : ''}</p>
-  <div class="card-meta">
-    <div>
-      <div class="meta-label">LinkedIn Post</div>
-      <div class="meta-value">${esc(hook)}${(item.linkedin_hook||'').length > 180 ? '&hellip;' : ''}</div>
-    </div>
-    <div>
-      <div class="meta-label">Blog Potential</div>
-      <div class="meta-value">${esc(item.blog_potential || '—')}</div>
-    </div>
+  <div class="card-fields">
+    ${cardField(item, 'newsletter_blurb', 'Newsletter Blurb', 200)}
+    ${cardField(item, 'linkedin_hook', 'LinkedIn Post', 160)}
+    ${cardField(item, 'instagram_caption', 'Instagram Caption', 120)}
+    ${cardField(item, 'blog_post', 'Blog Post', 120)}
+    ${cardField(item, 'blog_potential', 'Blog Potential', 80)}
+    ${sourceField}
   </div>
-  ${urls.length ? `<div class="source-urls">${urls.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join('')}</div>` : ''}
-  ${item.images?.length ? `<div class="card-images">${item.images.map((img, i) => `<img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}" onclick="openLightbox('${item.id}',${i})">`).join('')}</div>` : ''}
+  ${item.images?.length ? `<div class="card-images">${item.images.map((img, i) => `<img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}" onclick="openLightbox('${id}',${i})">`).join('')}</div>` : ''}
   ${item.created_at ? `<div class="card-date">${formatDate(item.created_at)}</div>` : ''}
   <div class="card-actions">
-    <button class="btn btn-ghost btn-sm" onclick="openEdit('${item.id}')">Edit</button>
-    ${item.status === 'Draft' ? `<button class="btn btn-approve btn-sm" onclick="approve('${item.id}')">Approve</button>` : ''}
-    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${item.id}','planetfab')" ${dis}>PF LinkedIn</button>
-    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${item.id}','fabrice')" ${dis}>Fabrice LI</button>
-    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${item.id}','michelle')" ${dis}>Michelle LI</button>
-    <button class="btn btn-ghost btn-sm" onclick="publishInstagram('${item.id}')" ${dis}>Instagram</button>
-    <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${item.id}')" ${dis}>Newsletter</button>
-    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${item.id}','fabrice')">Blog as Fabrice</button>
-    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${item.id}','michelle')">Blog as Michelle</button>
-    <button class="btn btn-danger btn-sm" onclick="openDeleteConfirm('${item.id}')">Delete</button>
+    <button class="btn btn-ghost btn-sm" onclick="openEdit('${id}')">Edit</button>
+    ${item.status === 'Draft' ? `<button class="btn btn-approve btn-sm" onclick="approve('${id}')">Approve</button>` : ''}
+    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','planetfab')" ${dis}>PF LinkedIn</button>
+    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','fabrice')" ${dis}>Fabrice LI</button>
+    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','michelle')" ${dis}>Michelle LI</button>
+    <button class="btn btn-ghost btn-sm" onclick="publishInstagram('${id}')" ${dis}>Instagram</button>
+    <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${id}')" ${dis}>Newsletter</button>
+    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${id}','fabrice')">Blog as Fabrice</button>
+    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${id}','michelle')">Blog as Michelle</button>
+    <button class="btn btn-danger btn-sm" onclick="openDeleteConfirm('${id}')">Delete</button>
   </div>
 </div>`;
 }
@@ -221,8 +261,7 @@ function toggleBulkMode() {
 
 function handleCardClick(e, id) {
   if (!bulkMode) return;
-  // Don't trigger on button clicks inside the card
-  if (e.target.closest('.card-actions')) return;
+  if (e.target.closest('button, a')) return;
   e.preventDefault();
   if (selectedIds.has(id)) {
     selectedIds.delete(id);
