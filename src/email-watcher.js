@@ -107,10 +107,14 @@ async function checkEmails() {
               .trim();
           }
 
-          // Strip email signature — both senders end their emails with their full name
-          // followed by phone, Zoom, Google Maps, and portfolio links that must not be
-          // captured as source_urls or sent as context to Claude.
-          const sigIdx = bodyText.search(/Fabrice G\. Frere|Michelle Keller/);
+          // Strip email signature using the two-line trigger unique to each sender:
+          //   "Fabrice G. Frere\nCreative Director | PlanetFab Studio"
+          //   "Michelle Keller\nArt Director | PlanetFab Studio"
+          // Matching the title line prevents false positives from the name alone
+          // (e.g. someone quoting or mentioning Fabrice/Michelle in the body).
+          // [ \t]* tolerates trailing spaces before the line break; \r?\n handles CRLF and LF.
+          const SIG_RE = /Fabrice G\. Frere[ \t]*\r?\nCreative Director \| PlanetFab Studio|Michelle Keller[ \t]*\r?\nArt Director \| PlanetFab Studio/;
+          const sigIdx = bodyText.search(SIG_RE);
           if (sigIdx !== -1) {
             console.log(`[email] uid ${uid} — stripping signature at char ${sigIdx}`);
             bodyText = bodyText.substring(0, sigIdx).trimEnd();
