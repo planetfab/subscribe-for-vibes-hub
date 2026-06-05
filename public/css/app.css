@@ -1102,35 +1102,75 @@ body.bulk-mode .card-actions { display: none; }
   /* Settings page */
   .settings-page { padding: 16px 16px 48px; }
 
-  /* Lightbox on mobile: full-screen, stacked layout */
+  /* Lightbox on mobile: image fills the full width, nav arrows float over the
+     image edges so they never add to the horizontal layout width. */
   .lightbox {
-    padding: 56px 8px 16px;
-    gap: 10px;
-    /* Prevent the page from scrolling behind the lightbox */
+    padding: 52px 0 20px;
+    gap: 12px;
     overscroll-behavior: contain;
   }
 
-  .lightbox-image-wrap {
-    gap: 4px;
-  }
-
-  .lightbox-nav {
-    font-size: 32px;
-    padding: 12px 6px;
-    /* Enlarge touch target without changing visual size */
-    min-width: 44px;
-    min-height: 44px;
+  /* 44×44 px tap target for the close button */
+  .lightbox-close {
+    width: 44px;
+    height: 44px;
+    top: 6px;
+    right: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: 24px;
+    padding: 0;
   }
 
+  /* Image-wrap becomes the positioning context for the overlay nav arrows */
+  .lightbox-image-wrap {
+    position: relative;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* Nav arrows: pull out of flow, float over the image left/right edges */
+  .lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 24px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 50%;
+    color: rgba(255, 255, 255, 0.92);
+    z-index: 1;
+    /* Reset properties that don't apply when position:absolute */
+    user-select: none;
+  }
+
+  #lightboxPrevBtn { left: 8px; }
+  #lightboxNextBtn { right: 8px; }
+
+  /* Image fills available width — can never cause horizontal scroll */
   .lightbox-img {
-    max-width: 86vw;
-    max-height: 62vh;
+    max-width: 100%;
+    max-height: 64vh;
+    width: auto;
   }
 
-  .lightbox-footer {
-    gap: 10px;
+  .lightbox-footer { gap: 10px; }
+
+  /* Edit modal X button: bigger tap target on mobile */
+  .edit-thumb-remove {
+    width: 26px;
+    height: 26px;
+    font-size: 15px;
+    top: -10px;
+    right: -10px;
   }
 }
