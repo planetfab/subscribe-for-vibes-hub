@@ -122,6 +122,15 @@ body {
   resize: vertical;
 }
 
+/* Force resize: vertical on all edit-modal textareas with a specific ID selector so it
+   wins over the appearance: none reset above, which strips WebKit's native resize grip */
+#editNewsletterBlurb,
+#editLinkedinHook,
+#editInstagramCaption,
+#editSourceUrls {
+  resize: vertical;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
 .btn {
@@ -913,6 +922,13 @@ body.bulk-mode .card-actions { display: none; }
   #editModal .field select {
     max-width: 100%;
     min-width: 0;
+  }
+
+  /* Prevent iOS from zooming in when a field is focused — iOS zooms when font-size < 16px */
+  .field input,
+  .field textarea,
+  .field select {
+    font-size: 16px;
   }
   #editModal .modal-actions {
     flex-direction: row;
