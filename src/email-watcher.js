@@ -155,7 +155,7 @@ async function checkEmails() {
 
           console.log(`[email] uid ${uid} — sending to Claude${images.length > 0 ? ` with ${images.length} image(s)` : ''}${!sanitized ? ' (image-only)' : ''}`);
           const result = await processContent(subject, contentToProcess, images);
-          await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages });
+          await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages, email_message_id: messageId });
           await db.markEmailProcessed(messageId);
           console.log(`[email] uid ${uid} — stored as "${result.piece_title}" and marked processed (message-id: ${messageId.substring(0, 40)}…)`);
           processed++;

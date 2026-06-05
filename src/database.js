@@ -17,55 +17,71 @@ async function init() {
     return;
   }
 
-  try {
-    const { Pool } = require('pg');
-    pool = new Pool({
-      connectionString: config.database.url,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 5000,
-    });
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS processed_emails (
-        message_id   TEXT PRIMARY KEY,
-        processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key        TEXT PRIMARY KEY,
-        value      TEXT NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS content (
-        id                UUID PRIMARY KEY,
-        piece_title       TEXT,
-        section_name      TEXT,
-        newsletter_blurb  TEXT,
-        linkedin_hook     TEXT,
-        instagram_caption TEXT,
-        blog_potential    TEXT,
-        source_urls       TEXT,
-        status            TEXT NOT NULL DEFAULT 'Draft',
-        email_subject     TEXT,
-        raw_content       TEXT,
-        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    // Migration: add deleted_at for soft-delete / trash (safe to run repeatedly)
-    await pool.query(`
-      ALTER TABLE content ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
-    `);
-    // Migration: add images for storing base64-encoded email attachments
-    await pool.query(`
-      ALTER TABLE content ADD COLUMN IF NOT EXISTS images TEXT
-    `);
-    console.log('PostgreSQL database ready');
-  } catch (err) {
-    console.error(`PostgreSQL connection failed (${err.message}) — falling back to in-memory store`);
-    pool = null;
+  const { Pool } = require('pg');
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const MAX_RETRIES = 4;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      pool = new Pool({
+        connectionString: config.database.url,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 8000,
+      });
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS processed_emails (
+          message_id   TEXT PRIMARY KEY,
+          processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS content (
+          id                UUID PRIMARY KEY,
+          piece_title       TEXT,
+          section_name      TEXT,
+          newsletter_blurb  TEXT,
+          linkedin_hook     TEXT,
+          instagram_caption TEXT,
+          blog_potential    TEXT,
+          source_urls       TEXT,
+          status            TEXT NOT NULL DEFAULT 'Draft',
+          email_subject     TEXT,
+          raw_content       TEXT,
+          created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      // Migration: add deleted_at for soft-delete / trash (safe to run repeatedly)
+      await pool.query(`
+        ALTER TABLE content ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
+      `);
+      // Migration: add images for storing base64-encoded email attachments
+      await pool.query(`
+        ALTER TABLE content ADD COLUMN IF NOT EXISTS images TEXT
+      `);
+      // Migration: store the originating email message-id on the content row so
+      // hasProcessedEmail() can find it even if the processed_emails row is missing
+      await pool.query(`
+        ALTER TABLE content ADD COLUMN IF NOT EXISTS email_message_id TEXT
+      `);
+      console.log('PostgreSQL database ready');
+      return;
+    } catch (err) {
+      pool = null;
+      if (attempt < MAX_RETRIES) {
+        console.warn(`[db.init] attempt ${attempt}/${MAX_RETRIES} failed (${err.message}) — retrying in 4s`);
+        await sleep(4000);
+      } else {
+        console.error(`PostgreSQL connection failed after ${MAX_RETRIES} attempts (${err.message}) — falling back to in-memory store`);
+      }
+    }
   }
 }
 
@@ -90,8 +106,9 @@ async function create(data) {
     const { rows } = await pool.query(
       `INSERT INTO content
          (id, piece_title, section_name, newsletter_blurb, linkedin_hook,
-          instagram_caption, blog_potential, source_urls, status, email_subject, raw_content, images)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10,$11)
+          instagram_caption, blog_potential, source_urls, status, email_subject,
+          raw_content, images, email_message_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10,$11,$12)
        RETURNING *`,
       [
         id,
@@ -105,6 +122,7 @@ async function create(data) {
         data.email_subject,
         data.raw_content,
         imagesJson,
+        data.email_message_id || null,
       ]
     );
     return parseRow(rows[0]);
@@ -305,11 +323,23 @@ async function countProcessedEmails() {
 
 async function hasProcessedEmail(messageId) {
   if (pool) {
-    const { rows } = await pool.query(
+    // Primary check: processed_emails dedup table
+    const { rows: peRows } = await pool.query(
       'SELECT 1 FROM processed_emails WHERE message_id = $1',
       [messageId]
     );
-    return rows.length > 0;
+    if (peRows.length > 0) return true;
+    // Fallback: if a content row already carries this message_id (including deleted),
+    // treat it as processed — prevents recreating deleted cards when processed_emails
+    // loses its record (e.g. crash between db.create and markEmailProcessed)
+    const { rows: cRows } = await pool.query(
+      'SELECT 1 FROM content WHERE email_message_id = $1 LIMIT 1',
+      [messageId]
+    );
+    if (cRows.length > 0) {
+      console.log(`[db] hasProcessedEmail: found via content table fallback — message_id: ${messageId.substring(0, 40)}…`);
+    }
+    return cRows.length > 0;
   }
   return memProcessed.has(messageId);
 }
