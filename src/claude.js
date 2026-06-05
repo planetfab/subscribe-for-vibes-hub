@@ -85,7 +85,18 @@ async function processContent(subject, content, images = []) {
     .replace(/```/g, '')
     .trim();
 
-  return JSON.parse(raw);
+  const result = JSON.parse(raw);
+
+  // Web search can inject <cite> and other HTML tags into plain-text fields.
+  // Strip all tags from fields that must be plain text.
+  const plainTextFields = ['newsletter_blurb', 'linkedin_hook', 'instagram_caption', 'section_name', 'piece_title', 'blog_potential', 'source_urls'];
+  for (const field of plainTextFields) {
+    if (typeof result[field] === 'string') {
+      result[field] = result[field].replace(/<[^>]+>/g, '');
+    }
+  }
+
+  return result;
 }
 
 module.exports = { processContent };
