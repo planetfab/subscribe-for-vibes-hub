@@ -896,7 +896,7 @@ body.bulk-mode .card-actions { display: none; }
   }
   #editModal .modal {
     width: 100%;
-    max-width: 100vw;
+    max-width: 100%; /* 100vw can exceed available width on iOS when scrollbar is present */
     max-height: 100%;
     height: 100%;
     border: none;
@@ -906,6 +906,13 @@ body.bulk-mode .card-actions { display: none; }
     overflow-x: hidden;
     overflow-y: auto;
     box-sizing: border-box;
+  }
+  /* Prevent any form element from pushing the modal wider than the viewport */
+  #editModal .field input,
+  #editModal .field textarea,
+  #editModal .field select {
+    max-width: 100%;
+    min-width: 0;
   }
   #editModal .modal-actions {
     flex-direction: row;

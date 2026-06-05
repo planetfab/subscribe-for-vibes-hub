@@ -182,22 +182,30 @@ All variables must be set in Railway → Project → Service → Variables. They
 
 ### Flow
 1. Connect to IMAP over SSL (port 993)
-2. Search for all messages received in the last 7 days (regardless of read/unread status — another mail client marks messages as read before the app sees them)
-3. For each message, compute its dedup key from the `Message-ID` header (falls back to a SHA-1 hash of `subject|date|from` if the header is absent)
-4. Skip messages whose ID is already in the `processed_emails` table
-5. Parse body: prefer `text/plain`, fall back to stripping HTML
-6. Sanitize: remove `\n`, `\r`, `\t` (matches the Make.com Tools module formula)
-7. Extract image attachments (jpeg/png/gif/webp, max 4 MB each, max 5 per email)
-8. Send subject + body + images to Claude via the Messages API
-9. Parse Claude's JSON response (7 fields)
-10. Write to `content` table with status `Draft`
-11. Record the `Message-ID` in `processed_emails`
+2. UID SEARCH for all messages received in the last 7 days — `client.search({ since }, { uid: true })` returns actual UIDs, not sequence numbers (passing `{ uid: true }` is required; without it, Dreamhost returns sequence numbers that don't match UIDs and every download fails)
+3. Fetch raw RFC822 source for all matched UIDs in one command — `client.fetch(uids, { source: true }, { uid: true })` yields each message as a Buffer on `message.source`
+4. For each message, compute its dedup key from the `Message-ID` header (falls back to a SHA-1 hash of `subject|date|from` if the header is absent)
+5. Skip messages whose ID is already in the `processed_emails` table
+6. Parse body: prefer `text/plain`, fall back to stripping HTML
+7. Sanitize: remove `\n`, `\r`, `\t` (matches the Make.com Tools module formula)
+8. Extract image attachments (jpeg/png/gif/webp, max 4 MB each, max 5 per email)
+9. Send subject + body + images to Claude via the Messages API
+10. Parse Claude's JSON response (7 fields)
+11. Write to `content` table with status `Draft`
+12. Record the `Message-ID` in `processed_emails`
+
+### IMAP implementation note
+`imapflow`'s `download()` API returns `{}` (empty object) when a message is not found, causing `content = undefined` and a `Cannot read properties of undefined (reading 'Symbol(Symbol.asyncIterator)')` error. The fix (committed June 5 2026) is to use `client.fetch()` with `{ source: true }`, which returns each message's full RFC822 source as a `Buffer` on `message.source`.
 
 ### Claude system prompt
 The exact system prompt from the working Make.com scenario is preserved verbatim in `src/claude.js`. It produces all seven output fields: `section_name`, `piece_title`, `newsletter_blurb`, `linkedin_hook`, `instagram_caption`, `blog_potential`, `source_urls`.
 
+The `linkedin_hook` field now contains a complete, ready-to-publish LinkedIn post (150–250 words, three-move structure, hashtags), not just a short hook.
+
 ### Image support
 When an email contains image attachments, they are passed to Claude as base64 `image` content blocks before the text. Claude can describe and reference the image as source material. Images are not stored anywhere after processing — see Known Limitations.
+
+Image-only emails (no text body) are also supported: they are sent to Claude with an analysis prompt so newsletter content is generated from visual inspiration alone.
 
 ---
 
@@ -300,9 +308,15 @@ Save to Blog works regardless of status.
 ### Editing
 Click **Edit** on any card to open a full-field editor with a live word count for the newsletter blurb (target: 150 words).
 
-### Deleting
-- **Single**: click **Delete** on a card → named confirmation modal
+### Deleting and Trash
+- **Single**: click **Delete** on a card → named confirmation modal → card moves to Trash (soft-delete: `deleted_at` is set in PostgreSQL; `getAll` filters with `WHERE deleted_at IS NULL`)
 - **Bulk**: click **Select** in the header → cards show checkboxes → select individually or use **Select All** → click **Delete N Items** → confirmation modal. Press Escape to exit bulk mode.
+- **Trash tab**: filter button at the right of the filter bar. Shows all soft-deleted cards with a countdown to auto-purge.
+- **Restore**: from Trash, click **Restore** to bring a card back to its original status.
+- **Delete Forever**: permanently removes a card from the database (irreversible).
+- **Empty Trash**: permanently deletes all items in Trash at once.
+- **Auto-purge**: a daily cron job at 3 am purges Trash items older than 5 days.
+- **Persistence**: deletes execute against PostgreSQL when `DATABASE_URL` is set. In the in-memory fallback (local dev without `DATABASE_URL`), soft-deletes work within a session but are lost on restart.
 
 ### Publishing buttons (per card)
 | Button | Destination | Requires |
@@ -324,8 +338,8 @@ The Meta app must pass App Review for `instagram_content_publish` before it work
 ### 2. LinkedIn company page requires Marketing Developer Platform access
 Posting to the PlanetFab LinkedIn organization page requires LinkedIn's Marketing Developer Platform tier. Apply at `linkedin.com/developers` → Products → Marketing Developer Platform. Until approved, only personal LinkedIn posts (Fabrice and Michelle) work.
 
-### 3. In-memory data loss without PostgreSQL
-Until the Railway PostgreSQL addon is added and `DATABASE_URL` is set, all content, settings, and processed-email records are stored in-memory and lost on every restart or redeploy. OAuth tokens stored via `/settings` are also lost. **Add the PostgreSQL addon as the first production step.**
+### 3. In-memory fallback without PostgreSQL
+When `DATABASE_URL` is not set, the app falls back to in-memory storage and emits a console warning. All content, settings, and processed-email records are stored in-memory and lost on every restart or redeploy. OAuth tokens stored via `/settings` are also lost. The in-memory fallback exists intentionally so the app can be run locally without a database. **On Railway, the PostgreSQL addon must be added for data to persist — this is the first production step.**
 
 ### 4. LinkedIn tokens expire (~60 days)
 LinkedIn access tokens are not permanent. Each person will need to re-authorize via `/settings` approximately every 60 days. The app shows an error on the card when a token is expired — just click Reconnect on the Settings page.

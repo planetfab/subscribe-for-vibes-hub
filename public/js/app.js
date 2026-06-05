@@ -364,12 +364,15 @@ function openEdit(id) {
   document.getElementById('editInstagramCaption').value = item.instagram_caption || '';
   const bpField = document.getElementById('editBlogPotential');
   bpField.value = item.blog_potential || '';
-  bpField.style.height = 'auto';
-  bpField.style.height = bpField.scrollHeight + 'px';
   document.getElementById('editSourceUrls').value = item.source_urls || '';
   document.getElementById('editStatus').value = item.status || 'Draft';
   updateBlurbCount();
   document.getElementById('editModal').style.display = 'flex';
+  // Auto-size blog potential after the modal is painted — scrollHeight is 0 while display:none
+  requestAnimationFrame(() => {
+    bpField.style.height = 'auto';
+    bpField.style.height = bpField.scrollHeight + 'px';
+  });
   document.getElementById('editPieceTitle').focus();
 }
 
@@ -387,6 +390,12 @@ function updateBlurbCount() {
 }
 
 document.getElementById('editNewsletterBlurb')?.addEventListener('input', updateBlurbCount);
+
+// Real-time auto-grow for Blog Potential textarea
+document.getElementById('editBlogPotential')?.addEventListener('input', function () {
+  this.style.height = 'auto';
+  this.style.height = this.scrollHeight + 'px';
+});
 
 document.getElementById('editForm').addEventListener('submit', async (e) => {
   e.preventDefault();
