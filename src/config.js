@@ -36,9 +36,15 @@ module.exports = {
   },
 
   wordpress: {
-    username:    process.env.WORDPRESS_USERNAME,
-    appPassword: process.env.WORDPRESS_APP_PASSWORD,
-    siteUrl:     process.env.WORDPRESS_SITE_URL || 'https://www.planetfab.com',
+    fabrice: {
+      username:    process.env.WORDPRESS_USERNAME,
+      appPassword: process.env.WORDPRESS_APP_PASSWORD,
+    },
+    michelle: {
+      username:    process.env.WORDPRESS_MICHELLE_USERNAME,
+      appPassword: process.env.WORDPRESS_MICHELLE_APP_PASSWORD,
+    },
+    siteUrl: process.env.WORDPRESS_SITE_URL || 'https://www.planetfab.com',
   },
 
   meta: {

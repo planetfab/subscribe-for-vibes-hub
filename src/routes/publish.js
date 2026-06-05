@@ -54,12 +54,17 @@ router.post('/newsletter/:id', async (req, res) => {
 });
 
 // Saving to blog creates a WP draft — no approval required
-router.post('/blog/:id', async (req, res) => {
+// :author is 'fabrice' or 'michelle'
+router.post('/blog/:author/:id', async (req, res) => {
   try {
-    const item = await db.getById(req.params.id);
+    const { author, id } = req.params;
+    if (!['fabrice', 'michelle'].includes(author)) {
+      return res.status(400).json({ error: 'Invalid author' });
+    }
+    const item = await db.getById(id);
     if (!item) return res.status(404).json({ error: 'Not found' });
 
-    const result = await saveToWordPress(item);
+    const result = await saveToWordPress(item, author);
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });

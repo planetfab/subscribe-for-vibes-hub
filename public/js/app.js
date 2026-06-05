@@ -151,7 +151,8 @@ function cardHTML(item) {
     <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${item.id}','michelle')" ${dis}>Michelle LI</button>
     <button class="btn btn-ghost btn-sm" onclick="publishInstagram('${item.id}')" ${dis}>Instagram</button>
     <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${item.id}')" ${dis}>Newsletter</button>
-    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${item.id}')">Save to Blog</button>
+    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${item.id}','fabrice')">Blog as Fabrice</button>
+    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${item.id}','michelle')">Blog as Michelle</button>
     <button class="btn btn-danger btn-sm" onclick="openDeleteConfirm('${item.id}')">Delete</button>
   </div>
 </div>`;
@@ -511,11 +512,12 @@ async function markNewsletter(id) {
   }
 }
 
-async function saveBlog(id) {
-  showToast('Saving draft to WordPress…');
+async function saveBlog(id, author) {
+  const label = author === 'michelle' ? "Michelle's" : "Fabrice's";
+  showToast(`Saving draft to WordPress as ${label} account…`);
   try {
-    const result = await apiFetch(`/api/publish/blog/${id}`, { method: 'POST' });
-    showToast('Draft saved to planetfab.com');
+    const result = await apiFetch(`/api/publish/blog/${author}/${id}`, { method: 'POST' });
+    showToast(`Draft saved to planetfab.com (${label} byline)`);
     if (result.editUrl) {
       setTimeout(() => window.open(result.editUrl, '_blank'), 600);
     }

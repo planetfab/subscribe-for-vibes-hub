@@ -27,14 +27,18 @@ function buildPostContent(blurb, inlineImageUrls) {
   return [paragraphs[0], imgBlocks, ...paragraphs.slice(1)].join('\n\n');
 }
 
-async function saveToWordPress(item) {
-  const { username, appPassword, siteUrl } = config.wordpress;
+async function saveToWordPress(item, author = 'fabrice') {
+  const creds = config.wordpress[author];
+  const { siteUrl } = config.wordpress;
 
-  if (!username || !appPassword) {
-    throw new Error(
-      'WordPress credentials not configured. Set WORDPRESS_USERNAME and WORDPRESS_APP_PASSWORD in Railway environment variables.'
-    );
+  if (!creds?.username || !creds?.appPassword) {
+    const vars = author === 'michelle'
+      ? 'WORDPRESS_MICHELLE_USERNAME and WORDPRESS_MICHELLE_APP_PASSWORD'
+      : 'WORDPRESS_USERNAME and WORDPRESS_APP_PASSWORD';
+    throw new Error(`WordPress credentials not configured for ${author}. Set ${vars} in Railway environment variables.`);
   }
+
+  const { username, appPassword } = creds;
 
   const credentials = Buffer.from(`${username}:${appPassword}`).toString('base64');
   const authHeader = { Authorization: `Basic ${credentials}` };
