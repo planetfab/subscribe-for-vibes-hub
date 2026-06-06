@@ -15,13 +15,16 @@ function requireApproved(item) {
 
 router.post('/linkedin/:type/:id', async (req, res) => {
   try {
-    const item = await db.getById(req.params.id);
+    const { type, id } = req.params;
+    const item = await db.getById(id);
     if (!item) return res.status(404).json({ error: 'Not found' });
     requireApproved(item);
 
-    const result = await publishToLinkedIn(item, req.params.type);
-    await db.update(req.params.id, { status: 'Published' });
-    res.json({ success: true, ...result });
+    const result = await publishToLinkedIn(item, type);
+    await db.update(id, { status: 'Published' });
+    await db.markChannelPublished(id, `linkedin_${type}`);
+    const updated = await db.getById(id);
+    res.json({ success: true, ...result, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
   }
@@ -29,12 +32,15 @@ router.post('/linkedin/:type/:id', async (req, res) => {
 
 router.post('/instagram/:id', async (req, res) => {
   try {
-    const item = await db.getById(req.params.id);
+    const { id } = req.params;
+    const item = await db.getById(id);
     if (!item) return res.status(404).json({ error: 'Not found' });
     requireApproved(item);
 
     const result = await publishToInstagram(item);
-    res.json({ success: true, ...result });
+    await db.markChannelPublished(id, 'instagram');
+    const updated = await db.getById(id);
+    res.json({ success: true, ...result, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
   }
@@ -42,11 +48,14 @@ router.post('/instagram/:id', async (req, res) => {
 
 router.post('/newsletter/:id', async (req, res) => {
   try {
-    const item = await db.getById(req.params.id);
+    const { id } = req.params;
+    const item = await db.getById(id);
     if (!item) return res.status(404).json({ error: 'Not found' });
     requireApproved(item);
 
-    const updated = await db.update(req.params.id, { status: 'Newsletter Ready' });
+    await db.update(id, { status: 'Newsletter Ready' });
+    await db.markChannelPublished(id, 'newsletter');
+    const updated = await db.getById(id);
     res.json({ success: true, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
@@ -65,7 +74,9 @@ router.post('/blog/:author/:id', async (req, res) => {
     if (!item) return res.status(404).json({ error: 'Not found' });
 
     const result = await saveToWordPress(item, author);
-    res.json({ success: true, ...result });
+    await db.markChannelPublished(id, `blog_${author}`);
+    const updated = await db.getById(id);
+    res.json({ success: true, ...result, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
   }

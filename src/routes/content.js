@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database');
 const { checkEmails } = require('../email-watcher');
+const { enrichContent } = require('../claude');
 
 const EDITABLE_FIELDS = [
   'piece_title', 'section_name', 'newsletter_blurb',
@@ -134,6 +135,17 @@ router.post('/check-email', async (req, res) => {
   }
 
   res.end();
+});
+
+router.post('/:id/enrich', async (req, res) => {
+  try {
+    const item = await db.getById(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    const enriched = await enrichContent(item);
+    res.json(enriched);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

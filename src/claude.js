@@ -82,4 +82,50 @@ async function processContent(subject, content, images = []) {
   return result;
 }
 
-module.exports = { processContent };
+async function enrichContent(item) {
+  if (!config.anthropicApiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not configured');
+  }
+
+  const userText = [
+    'IMPORTANT: You are ENRICHING existing content, not creating from scratch. Use web_search to',
+    'research the source URLs and related topic in depth, then rewrite all fields with richer,',
+    "more specific details — concrete names, quotes, dates, examples. Keep Michelle's voice.",
+    '',
+    `Original subject: ${item.email_subject || '(none)'}`,
+    `Source URLs: ${item.source_urls || '(none)'}`,
+    `Original content: ${item.raw_content || '(none)'}`,
+    `Current blurb: ${item.newsletter_blurb || '(none)'}`,
+  ].join('\n');
+
+  const message = await getClient().messages.create({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 4000,
+    system: SYSTEM_PROMPT,
+    tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    messages: [{ role: 'user', content: userText }],
+  });
+
+  const searchCount = message.content.filter(b => b.type === 'server_tool_use').length;
+  if (searchCount > 0) console.log(`[claude] Enrich — ${searchCount} web search(es) performed`);
+
+  const textBlock = message.content.find(b => b.type === 'text');
+  if (!textBlock) {
+    throw new Error(`Claude returned no text block (stop_reason: ${message.stop_reason})`);
+  }
+
+  const raw = textBlock.text.replace(/```json/g, '').replace(/```/g, '').trim();
+  const result = JSON.parse(raw);
+
+  // Strip <cite> and other HTML injected by web_search into plain-text fields
+  const plainTextFields = ['newsletter_blurb', 'linkedin_hook', 'instagram_caption', 'section_name', 'piece_title', 'blog_potential', 'source_urls'];
+  for (const field of plainTextFields) {
+    if (typeof result[field] === 'string') {
+      result[field] = result[field].replace(/<[^>]+>/g, '');
+    }
+  }
+
+  return result;
+}
+
+module.exports = { processContent, enrichContent };

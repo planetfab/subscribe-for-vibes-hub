@@ -84,7 +84,8 @@ async function init() {
     await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS images           TEXT`);
     await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS email_message_id TEXT`);
     await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS blog_post        TEXT`);
-    await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS email_received_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS email_received_at  TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS published_channels TEXT`);
 
     const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM settings');
     console.log(`[db.init] PostgreSQL ready — ${rows[0].n} setting${rows[0].n !== 1 ? 's' : ''} in store`);
@@ -93,16 +94,13 @@ async function init() {
   }
 }
 
-// Parse a PostgreSQL row: images is stored as a JSON string, return as array.
-// When we migrate from base64 to R2 URLs the shape of each element changes
-// (data → url) but this parser stays the same — callers just get the raw objects.
 function parseRow(row) {
   if (!row) return null;
   let images = [];
-  if (row.images) {
-    try { images = JSON.parse(row.images); } catch {}
-  }
-  return { ...row, images };
+  if (row.images) { try { images = JSON.parse(row.images); } catch {} }
+  let published_channels = {};
+  if (row.published_channels) { try { published_channels = JSON.parse(row.published_channels); } catch {} }
+  return { ...row, images, published_channels };
 }
 
 async function create(data) {
@@ -363,6 +361,29 @@ async function markEmailProcessed(messageId) {
   memProcessed.add(messageId);
 }
 
+// Merges a single channel timestamp into the published_channels JSON column.
+// Uses a read-modify-write so existing channel records are never overwritten.
+async function markChannelPublished(id, channel) {
+  const ts = new Date().toISOString();
+  if (pool) {
+    const { rows } = await pool.query('SELECT published_channels FROM content WHERE id = $1', [id]);
+    if (!rows.length) return;
+    let channels = {};
+    try { channels = JSON.parse(rows[0].published_channels || '{}'); } catch {}
+    channels[channel] = ts;
+    await pool.query(
+      'UPDATE content SET published_channels = $2, updated_at = NOW() WHERE id = $1',
+      [id, JSON.stringify(channels)]
+    );
+    return;
+  }
+  const item = memStore.find(i => i.id === id);
+  if (item) {
+    if (!item.published_channels) item.published_channels = {};
+    item.published_channels[channel] = ts;
+  }
+}
+
 async function countCardsThisMonth() {
   if (pool) {
     const { rows } = await pool.query(
@@ -381,4 +402,5 @@ module.exports = {
   getTrash, restoreById, permanentDeleteById, emptyTrash, purgeOldTrash,
   getSetting, setSetting,
   countProcessedEmails, hasProcessedEmail, markEmailProcessed, countCardsThisMonth,
+  markChannelPublished,
 };

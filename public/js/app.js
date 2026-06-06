@@ -191,6 +191,13 @@ function statusClass(status) {
   return map[status] || 'status-draft';
 }
 
+// Returns a green checkmark prefix if this channel has been published.
+function channelCheck(item, channel) {
+  return item.published_channels?.[channel]
+    ? '<span class="pub-check" aria-label="Published">✓</span>'
+    : '';
+}
+
 function cardHTML(item) {
   const isApproved = item.status === 'Approved';
   const dis = isApproved ? '' : 'disabled title="Approve content first"';
@@ -225,16 +232,25 @@ function cardHTML(item) {
   ${item.email_received_at ? `<div class="card-date card-date-email">Email received: ${formatDate(item.email_received_at)}</div>` : ''}
   ${item.created_at ? `<div class="card-date">${formatDate(item.created_at)}</div>` : ''}
   <div class="card-actions">
-    <button class="btn btn-ghost btn-sm" onclick="openEdit('${id}')">Edit</button>
-    ${item.status === 'Draft' ? `<button class="btn btn-approve btn-sm" onclick="approve('${id}')">Approve</button>` : ''}
-    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','planetfab')" ${dis}>PF LinkedIn</button>
-    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','fabrice')" ${dis}>Fabrice LI</button>
-    <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','michelle')" ${dis}>Michelle LI</button>
-    <button class="btn btn-ghost btn-sm" onclick="publishInstagram('${id}')" ${dis}>Instagram</button>
-    <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${id}')" ${dis}>Newsletter</button>
-    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${id}','fabrice')">Blog as Fabrice</button>
-    <button class="btn btn-ghost btn-sm" onclick="saveBlog('${id}','michelle')">Blog as Michelle</button>
-    <button class="btn btn-danger btn-sm" onclick="openDeleteConfirm('${id}')">Delete</button>
+    <div class="card-actions-row">
+      <button class="btn btn-ghost btn-sm" onclick="openEdit('${id}')">Edit</button>
+      ${item.status === 'Draft' ? `<button class="btn btn-approve btn-sm" onclick="approve('${id}')">Approve</button>` : ''}
+    </div>
+    <div class="card-actions-row">
+      <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','fabrice')" ${dis}>${channelCheck(item,'linkedin_fabrice')}Fabrice LI</button>
+      <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','michelle')" ${dis}>${channelCheck(item,'linkedin_michelle')}Michelle LI</button>
+    </div>
+    <div class="card-actions-row">
+      <button class="btn btn-ghost btn-sm" onclick="saveBlog('${id}','fabrice')">${channelCheck(item,'blog_fabrice')}Blog as Fabrice</button>
+      <button class="btn btn-ghost btn-sm" onclick="saveBlog('${id}','michelle')">${channelCheck(item,'blog_michelle')}Blog as Michelle</button>
+    </div>
+    <div class="card-actions-row">
+      <button class="btn btn-ghost btn-sm" onclick="publishInstagram('${id}')" ${dis}>${channelCheck(item,'instagram')}Instagram</button>
+      <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${id}')" ${dis}>${channelCheck(item,'newsletter')}Newsletter</button>
+    </div>
+    <div class="card-actions-row card-actions-delete">
+      <button class="btn btn-danger btn-sm" onclick="openDeleteConfirm('${id}')">Delete</button>
+    </div>
   </div>
 </div>`;
 }
@@ -436,10 +452,13 @@ function confirmEmptyTrash() {
 
 /* ── Confirm modal ──────────────────────────────────────────────────────── */
 
-function openConfirm(title, message, onConfirm) {
+function openConfirm(title, message, onConfirm, btnLabel = 'Delete', danger = true) {
   document.getElementById('confirmTitle').textContent = title;
   document.getElementById('confirmMessage').textContent = message;
-  document.getElementById('confirmBtn').onclick = () => { closeConfirm(); onConfirm(); };
+  const btn = document.getElementById('confirmBtn');
+  btn.textContent = btnLabel;
+  btn.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+  btn.onclick = () => { closeConfirm(); onConfirm(); };
   document.getElementById('confirmModal').style.display = 'flex';
 }
 
@@ -595,12 +614,12 @@ async function approve(id) {
 }
 
 async function publishLinkedIn(id, type) {
-  const labels = { planetfab: 'PlanetFab LinkedIn', fabrice: "Fabrice's LinkedIn", michelle: "Michelle's LinkedIn" };
-  showToast(`Publishing to ${labels[type]}…`);
+  const labels = { fabrice: "Fabrice's LinkedIn", michelle: "Michelle's LinkedIn" };
+  showToast(`Publishing to ${labels[type] || 'LinkedIn'}…`);
   try {
-    await apiFetch(`/api/publish/linkedin/${type}/${id}`, { method: 'POST' });
-    showToast(`Published to ${labels[type]}`);
-    await loadContent();
+    const result = await apiFetch(`/api/publish/linkedin/${type}/${id}`, { method: 'POST' });
+    if (result.item) { mergeItem(result.item); updateCounts(); renderCards(); }
+    showToast(`Published to ${labels[type] || 'LinkedIn'}`);
   } catch (err) {
     showToast(err.message || 'Publish failed', true);
   }
@@ -609,7 +628,8 @@ async function publishLinkedIn(id, type) {
 async function publishInstagram(id) {
   showToast('Publishing to Instagram…');
   try {
-    await apiFetch(`/api/publish/instagram/${id}`, { method: 'POST' });
+    const result = await apiFetch(`/api/publish/instagram/${id}`, { method: 'POST' });
+    if (result.item) { mergeItem(result.item); renderCards(); }
     showToast('Posted to Instagram');
   } catch (err) {
     showToast(err.message || 'Publish failed', true);
@@ -633,6 +653,7 @@ async function saveBlog(id, author) {
   showToast(`Saving draft to WordPress as ${label} account…`);
   try {
     const result = await apiFetch(`/api/publish/blog/${author}/${id}`, { method: 'POST' });
+    if (result.item) { mergeItem(result.item); renderCards(); }
     showToast(`Draft saved to planetfab.com (${label} byline)`);
     if (result.editUrl) {
       setTimeout(() => window.open(result.editUrl, '_blank'), 600);
@@ -640,6 +661,45 @@ async function saveBlog(id, author) {
   } catch (err) {
     showToast(err.message || 'WordPress save failed', true);
   }
+}
+
+async function enrichCard() {
+  const id = document.getElementById('editId').value;
+  const item = allItems.find(i => i.id === id);
+  const title = item?.piece_title || 'this card';
+
+  openConfirm(
+    'Research & Enrich',
+    `Research & Enrich uses web search to add depth to "${title}". Estimated cost: $0.50–$1.00 in API credits. This may take up to a minute. Proceed?`,
+    async () => {
+      const btn = document.getElementById('enrichBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Researching…'; }
+      showToast('Researching — please wait, this may take up to a minute');
+      try {
+        const enriched = await apiFetch(`/api/content/${id}/enrich`, { method: 'POST' });
+        if (enriched.newsletter_blurb) {
+          document.getElementById('editNewsletterBlurb').value = enriched.newsletter_blurb;
+          updateBlurbCount();
+        }
+        if (enriched.linkedin_hook)     document.getElementById('editLinkedinHook').value     = enriched.linkedin_hook;
+        if (enriched.instagram_caption) document.getElementById('editInstagramCaption').value = enriched.instagram_caption;
+        if (enriched.blog_post && quill) {
+          const bp = enriched.blog_post;
+          const html = bp.trimStart().startsWith('<')
+            ? bp
+            : bp.split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+          quill.clipboard.dangerouslyPasteHTML(html);
+        }
+        showToast('Content enriched — review changes and save');
+      } catch (err) {
+        showToast(err.message || 'Enrichment failed', true);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Research & Enrich'; }
+      }
+    },
+    'Proceed',
+    false
+  );
 }
 
 // Sets ticker text and triggers the scroll animation when the text overflows

@@ -535,10 +535,31 @@ body.bulk-mode .card-header { padding-left: 26px; }
 
 .card-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  flex-direction: column;
+  gap: 5px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
+}
+
+.card-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.card-actions-delete {
+  border-top: 1px solid var(--border);
+  padding-top: 5px;
+  margin-top: 1px;
+}
+
+/* Green checkmark shown on buttons for already-published channels */
+.pub-check {
+  color: #27ae60;
+  font-weight: 700;
+  font-size: 10px;
+  margin-right: 2px;
+  line-height: 1;
 }
 
 /* Hide action buttons in bulk mode */
@@ -859,6 +880,13 @@ body.bulk-mode .card-actions { display: none; }
   border-color: var(--ink);
   color: var(--ink);
   background: var(--bg);
+}
+
+/* Research & Enrich button — sits between the blog post label and the editor */
+.enrich-btn {
+  display: inline-flex;
+  margin-bottom: 6px;
+  font-size: 11px;
 }
 
 /* ── Quill rich text editor (blog_post field) ───────────────────────────── */
@@ -1240,7 +1268,7 @@ body.bulk-mode .card-actions { display: none; }
     gap: 6px;
     padding-top: 12px;
   }
-  .card-actions .btn {
+  .card-actions-row .btn {
     min-height: 44px;
     padding: 0 10px;
     font-size: 12px;
