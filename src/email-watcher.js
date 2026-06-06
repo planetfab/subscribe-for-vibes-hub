@@ -181,11 +181,7 @@ async function checkEmails() {
 }
 
 function startEmailWatcher() {
-  console.log('[email] Watcher started — polling every 5 minutes');
-  checkEmails().catch(err => console.error('[email] Initial check failed:', err.message));
-  cron.schedule('*/5 * * * *', () => {
-    checkEmails().catch(err => console.error('[email] Scheduled check failed:', err.message));
-  });
+  console.log('[email] Automatic polling disabled — email checks are manual only');
   // Purge trash items older than 5 days — runs once daily at 3 am
   db.purgeOldTrash().catch(err => console.error('[db] Initial trash purge failed:', err.message));
   cron.schedule('0 3 * * *', () => {
