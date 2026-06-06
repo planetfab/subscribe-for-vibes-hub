@@ -86,6 +86,7 @@ async function init() {
     await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS blog_post        TEXT`);
     await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS email_received_at  TIMESTAMPTZ`);
     await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS published_channels TEXT`);
+    await pool.query(`ALTER TABLE content ADD COLUMN IF NOT EXISTS meta_description  TEXT`);
 
     const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM settings');
     console.log(`[db.init] PostgreSQL ready — ${rows[0].n} setting${rows[0].n !== 1 ? 's' : ''} in store`);
@@ -113,8 +114,9 @@ async function create(data) {
       `INSERT INTO content
          (id, piece_title, section_name, newsletter_blurb, linkedin_hook,
           instagram_caption, blog_potential, source_urls, status, email_subject,
-          raw_content, images, email_message_id, blog_post, email_received_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10,$11,$12,$13,$14)
+          raw_content, images, email_message_id, blog_post, email_received_at,
+          meta_description)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         id,
@@ -131,6 +133,7 @@ async function create(data) {
         data.email_message_id || null,
         data.blog_post || null,
         data.email_received_at || null,
+        data.meta_description || null,
       ]
     );
     return parseRow(rows[0]);

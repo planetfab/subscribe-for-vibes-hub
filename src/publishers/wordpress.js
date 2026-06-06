@@ -140,6 +140,16 @@ async function saveToWordPress(item, author = 'fabrice') {
     content = buildPostContent(item.newsletter_blurb, inlineImages);
   }
 
+  // Send meta_description to Yoast SEO (yoast_meta) and as the WP excerpt as fallback.
+  // Both fields are included simultaneously: WP silently ignores yoast_meta when the
+  // plugin is absent, and Yoast takes precedence over the excerpt when it is present.
+  const metaFields = item.meta_description
+    ? {
+        yoast_meta: { yoast_wpseo_metadesc: item.meta_description },
+        excerpt:    { raw: item.meta_description },
+      }
+    : {};
+
   const { data } = await axios.post(
     `${siteUrl}/wp-json/wp/v2/posts`,
     {
@@ -147,6 +157,7 @@ async function saveToWordPress(item, author = 'fabrice') {
       content,
       status:  'draft',
       ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
+      ...metaFields,
     },
     { headers: { ...authHeader, 'Content-Type': 'application/json' } }
   );

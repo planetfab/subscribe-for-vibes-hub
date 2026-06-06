@@ -84,6 +84,10 @@
             <div id="quillEditor"></div>
           </div>
         </div>
+        <div class="field">
+          <label>Meta Description <span class="field-hint" id="metaDescCount"></span><button type="button" class="copy-btn" data-copy-field="editMetaDescription" title="Copy to clipboard"></button></label>
+          <input type="text" id="editMetaDescription" placeholder="SEO meta description (150–160 characters)">
+        </div>
         <div class="field"><label>Source URLs <button type="button" class="copy-btn" data-copy-field="editSourceUrls" title="Copy to clipboard"></button></label><textarea id="editSourceUrls" rows="2" placeholder="Comma-separated URLs"></textarea></div>
         <div class="field">
           <label>Status</label>
@@ -138,6 +142,6 @@
 
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.js"></script>
-  <script src="/js/app.js?v=10"></script>
+  <script src="/js/app.js?v=11"></script>
 </body>
 </html>

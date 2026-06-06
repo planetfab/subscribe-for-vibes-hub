@@ -483,6 +483,7 @@ function openEdit(id) {
   document.getElementById('editInstagramCaption').value = item.instagram_caption || '';
   const bpField = document.getElementById('editBlogPotential');
   bpField.value = item.blog_potential || '';
+  document.getElementById('editMetaDescription').value = item.meta_description || '';
   document.getElementById('editSourceUrls').value = item.source_urls || '';
   document.getElementById('editStatus').value = item.status || 'Draft';
   editImages = [...(item.images || [])];
@@ -490,6 +491,7 @@ function openEdit(id) {
   document.getElementById('imageFileInput').value = '';
   renderEditImages();
   updateBlurbCount();
+  updateMetaDescCount();
   document.getElementById('editModal').style.display = 'flex';
   // Auto-size blog potential after the modal is painted — scrollHeight is 0 while display:none
   requestAnimationFrame(() => {
@@ -572,6 +574,16 @@ function updateBlurbCount() {
 
 document.getElementById('editNewsletterBlurb')?.addEventListener('input', updateBlurbCount);
 
+function updateMetaDescCount() {
+  const input = document.getElementById('editMetaDescription');
+  const hint  = document.getElementById('metaDescCount');
+  if (!input || !hint) return;
+  const len = input.value.length;
+  hint.textContent = `${len}/160`;
+  hint.style.color = len > 160 ? '#c0392b' : len >= 150 ? '#27ae60' : 'var(--ink-muted)';
+}
+document.getElementById('editMetaDescription')?.addEventListener('input', updateMetaDescCount);
+
 // Real-time auto-grow for Blog Potential textarea
 document.getElementById('editBlogPotential')?.addEventListener('input', function () {
   this.style.height = 'auto';
@@ -589,6 +601,7 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     linkedin_hook: document.getElementById('editLinkedinHook').value,
     instagram_caption: document.getElementById('editInstagramCaption').value,
     blog_potential: document.getElementById('editBlogPotential').value,
+    meta_description: document.getElementById('editMetaDescription').value,
     source_urls: document.getElementById('editSourceUrls').value,
     status: document.getElementById('editStatus').value,
     images: editImages,
@@ -688,8 +701,12 @@ async function enrichCard() {
           document.getElementById('editNewsletterBlurb').value = enriched.newsletter_blurb;
           updateBlurbCount();
         }
-        if (enriched.linkedin_hook)     document.getElementById('editLinkedinHook').value     = enriched.linkedin_hook;
-        if (enriched.instagram_caption) document.getElementById('editInstagramCaption').value = enriched.instagram_caption;
+        if (enriched.linkedin_hook)       document.getElementById('editLinkedinHook').value       = enriched.linkedin_hook;
+        if (enriched.instagram_caption)   document.getElementById('editInstagramCaption').value   = enriched.instagram_caption;
+        if (enriched.meta_description) {
+          document.getElementById('editMetaDescription').value = enriched.meta_description;
+          updateMetaDescCount();
+        }
         if (enriched.blog_post && quill) {
           const bp = enriched.blog_post;
           const html = bp.trimStart().startsWith('<')
