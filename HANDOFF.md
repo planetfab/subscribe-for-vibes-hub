@@ -5,7 +5,7 @@
 **Founders:** Fabrice Frere & Michelle Keller  
 **Live URL:** https://hub.planetfab.com  
 **GitHub:** https://github.com/planetfab/subscribe-for-vibes-hub  
-**Date:** June 2026
+**Last updated:** June 6 2026
 
 ---
 
@@ -17,20 +17,32 @@ The Make.com scenario is still running as a parallel backup and should remain ac
 
 ---
 
+## Cost Incident — June 5 2026
+
+**What happened:** Runaway API costs of approximately $300 in a single day. Two compounding causes: (1) automatic email polling every 5 minutes was triggering Claude API calls at high volume, (2) the `web_search_20250305` tool was enabled on every call, adding $0.50–$1.00 per email processed.
+
+**Resolution:**
+- Automatic polling removed; replaced with twice-daily scheduled checks (see Email Pipeline)
+- Web search removed from the default `processContent()` call; available only via the manual Research & Enrich button in the edit modal
+- Anthropic spend limit set to **$350 for June 2026**, drops to **$20/month from July 1 2026**
+- Current API balance: approximately **$4**
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Backend | Node.js 18+ with Express |
 | Frontend | Vanilla HTML / CSS / JavaScript (no framework) |
-| AI | Anthropic Claude API (`claude-sonnet-4-5`) with `web_search_20250305` built-in tool |
+| AI | Anthropic Claude API (`claude-sonnet-4-5`) |
 | Database | PostgreSQL via Railway addon (in-memory fallback for local dev) |
 | Email | IMAP via `imapflow` + `mailparser` (Dreamhost, `buzzby@planetfab.com`) |
 | Image processing | `sharp` — cover-crop resizing for LinkedIn (1200×627) and WordPress (1536×1024) |
 | Rich text editor | Quill.js 1.3.7 (CDN) — blog post field in edit modal |
 | Hosting | Railway (Hobby plan, auto-deploy from GitHub) |
 | Domain | `hub.planetfab.com` via Dreamhost DNS → Railway |
-| Publishing | LinkedIn UGC Posts API v2, Meta Graph API v19.0, WordPress REST API |
+| Publishing | LinkedIn UGC Posts API v2, Meta Graph API v19.0, WordPress REST API + Yoast SEO |
 | Auth | `express-session` with per-user passwords (no OAuth for app login) |
 
 ### npm dependencies
@@ -43,7 +55,7 @@ express             — Web server
 express-session     — Session-based authentication
 imapflow            — IMAP email client
 mailparser          — Email parsing (MIME, attachments)
-node-cron           — Scheduled email polling (every 5 minutes)
+node-cron           — Scheduled checks (8am/2pm ET) and daily trash purge
 pg                  — PostgreSQL client
 sharp               — Image resizing/cropping for platform-specific dimensions
 uuid                — UUID generation for content IDs
@@ -60,13 +72,13 @@ subscribe-for-vibes-hub/
 │   ├── config.js                  # All environment variable bindings
 │   ├── database.js                # PostgreSQL + in-memory store, all CRUD
 │   ├── claude.js                  # Claude API integration with system prompt
-│   ├── email-watcher.js           # IMAP poller, dedup, Claude pipeline
+│   ├── email-watcher.js           # IMAP poller, dedup, Claude pipeline, cron schedule
 │   ├── image-utils.js             # sharp wrappers: resizeToJpeg(), decodeBuffer()
 │   ├── middleware/
 │   │   └── auth.js                # requireAuth middleware (shared)
 │   ├── routes/
 │   │   ├── auth.js                # POST /auth/login, GET /auth/logout
-│   │   ├── content.js             # GET/PUT/DELETE /api/content, bulk-delete, check-email
+│   │   ├── content.js             # GET/PUT/DELETE /api/content, bulk-delete, check-email (SSE)
 │   │   ├── publish.js             # POST /api/publish/* (LinkedIn, Instagram, newsletter, blog)
 │   │   ├── linkedin-oauth.js      # LinkedIn OAuth initiation + callback
 │   │   ├── instagram-oauth.js     # Instagram/Facebook OAuth initiation + callback
@@ -74,7 +86,7 @@ subscribe-for-vibes-hub/
 │   └── publishers/
 │       ├── linkedin.js            # LinkedIn UGC Posts API (with image upload)
 │       ├── instagram.js           # Meta Graph API (create container + publish)
-│       └── wordpress.js           # WordPress REST API (draft post + media upload)
+│       └── wordpress.js           # WordPress REST API (draft post + media upload + Yoast)
 ├── public/
 │   ├── index.html                 # Main dashboard
 │   ├── login.html                 # Login page
@@ -157,8 +169,9 @@ All variables must be set in Railway → Project → Service → Variables. They
 - Start command: `node src/server.js`
 - No HTTP healthcheck (removed — was timing out; Railway uses TCP port check instead)
 - SSL certificate is valid and active on `hub.planetfab.com`
-- PostgreSQL addon is active; deletes are confirmed working (soft-delete sets `deleted_at`; `getAll` filters with `WHERE deleted_at IS NULL`)
+- PostgreSQL addon is active and stable; all tokens, settings, and content persist across deployments
 - DB init retries up to 4 times with 4-second delays (8s connection timeout) to survive Railway's PostgreSQL startup race
+- DB init is split into two phases: Phase 1 retries the connection with `SELECT 1`; Phase 2 runs schema migrations. Phase 2 errors are logged but do not null the pool, so a migration hiccup never silently falls back to in-memory.
 
 ### Adding PostgreSQL (required for persistence)
 1. Railway dashboard → Project → **+ New** → **Database** → **Add PostgreSQL**
@@ -197,13 +210,16 @@ The app creates and migrates all tables automatically at startup. Current column
 | `linkedin_hook` | TEXT | Full LinkedIn post (150–250 words + hashtags) |
 | `instagram_caption` | TEXT | |
 | `blog_potential` | TEXT | Yes/No + notes |
-| `source_urls` | TEXT | Comma-separated |
-| `blog_post` | TEXT | 600–800 word article from Claude; stored as Quill HTML after first edit |
+| `source_urls` | TEXT | Comma-separated; extracted in Node.js after signature stripping, not by Claude |
+| `blog_post` | TEXT | 600–800 word article; stored as Quill HTML after first edit; `<em>` tags used for titles of published works |
+| `meta_description` | TEXT | SEO meta description, max 155 chars; sent to Yoast SEO + WP excerpt on blog publish |
 | `status` | TEXT | `Draft`, `Approved`, `Published`, `Newsletter Ready` |
 | `email_subject` | TEXT | |
 | `raw_content` | TEXT | Sanitized email body sent to Claude |
-| `images` | TEXT | JSON array of `{data, contentType, filename}` — base64 encoded, up to 3 |
+| `images` | TEXT | JSON array of `{data, contentType, filename, caption?}` — base64 encoded, up to 3 |
 | `email_message_id` | TEXT | Originating email Message-ID (dedup fallback) |
+| `published_channels` | TEXT | JSON object mapping channel keys to ISO timestamp of publish — e.g. `{"linkedin_fabrice":"2026-06-05T…"}` |
+| `email_received_at` | TIMESTAMPTZ | Original email received date, shown on cards |
 | `deleted_at` | TIMESTAMPTZ | NULL = active; set = soft-deleted (Trash) |
 | `created_at` | TIMESTAMPTZ | |
 | `updated_at` | TIMESTAMPTZ | |
@@ -217,14 +233,19 @@ The app creates and migrates all tables automatically at startup. Current column
 **Important:** Records in `processed_emails` are NEVER deleted, even when a content card is permanently deleted. This prevents deleted cards from being recreated on the next email check. A secondary dedup check also queries the `content` table for `email_message_id` matches (including soft-deleted rows) in case a `processed_emails` record is ever missing.
 
 ### `settings`
-Key/value store for OAuth tokens and URNs.
+Key/value store for OAuth tokens and URNs. Tokens survive deployments because DB init Phase 2 errors never null the pool.
 
 ---
 
 ## Email Pipeline
 
 **Inbox:** `buzzby@planetfab.com` via Dreamhost IMAP  
-**Schedule:** Checked every 5 minutes via `node-cron`, plus on-demand via the **Check Email** button
+**Schedule:** Twice daily via `node-cron` at **8 am and 2 pm Eastern** (handles EST/EDT automatically via `America/New_York` timezone), plus on-demand via the **Check Email** button
+
+### Scheduled checks
+- Log line on start: `[email] Scheduled check starting at <ISO timestamp>`
+- Log line on finish: `[email] Scheduled check complete — N new email(s) processed`
+- When there are no new emails the IMAP dedup check exits before any Claude call — **zero API cost**
 
 ### Flow
 1. Connect to IMAP over SSL (port 993)
@@ -232,15 +253,27 @@ Key/value store for OAuth tokens and URNs.
 3. Fetch raw RFC822 source for all matched UIDs — `client.fetch(uids, { source: true }, { uid: true })` yields each message as a Buffer on `message.source`
 4. For each message, compute its dedup key from the `Message-ID` header (falls back to a SHA-1 hash of `subject|date|from` if the header is absent)
 5. Skip messages whose ID is already in `processed_emails` OR whose `email_message_id` appears in any `content` row (including deleted) — this double-check prevents reprocessing if a `processed_emails` record is ever missing
-6. Parse body: prefer `text/plain`, fall back to stripping HTML
+6. Parse body: prefer `text/plain`, fall back to HTML. HTML fallback converts `<br>` and closing block tags to `\n` before stripping other tags so that signature detection (which requires a newline) works correctly in HTML emails
 7. Strip email signature: search for the two-line consecutive pattern unique to each sender (see below) and discard everything from that point onward
-8. Sanitize: remove `\n`, `\r`, `\t` (matches the Make.com Tools module formula)
-9. Extract image attachments (jpeg/png/gif/webp, max 4 MB each, max 5 for Claude, max 3 stored)
-10. Send subject + body + images to Claude via the Messages API (max 5 images, base64 encoded)
-11. Parse Claude's JSON response (8 fields)
-12. Convert up to 3 image attachments to base64 and store as JSON in the `images` column
-13. Write to `content` table (status `Draft`) with `email_message_id` set
-14. Record the `Message-ID` in `processed_emails`
+8. Extract URLs in Node.js from the signature-stripped body (not by Claude). `planetfab.com` is on a denylist so own-domain signature URLs are always excluded
+9. Sanitize: remove `\n`, `\r`, `\t` (matches the Make.com Tools module formula)
+10. Extract image attachments (jpeg/png/gif/webp, max 4 MB each, max 5 for Claude, max 3 stored)
+11. Send subject + body + images to Claude via the Messages API (max 5 images, base64 encoded) — **no web search tool at this stage**
+12. Parse Claude's JSON response (9 fields including `meta_description`); truncate `meta_description` to 155 chars at word boundary if over limit
+13. Override `source_urls` with the Node.js-extracted URLs (Claude's `source_urls` output is discarded)
+14. Convert up to 3 image attachments to base64 and store as JSON in the `images` column
+15. Write to `content` table (status `Draft`) with `email_message_id` and `email_received_at` set
+16. Record the `Message-ID` in `processed_emails`
+
+### Check Email button (manual / on-demand)
+Uses **Server-Sent Events (SSE)** to stream real-time progress into the header ticker:
+- "Connecting to mailbox…"
+- "Found N new emails…"
+- "Processing: `<subject>`…"
+- "Saving to database…"
+- "Done — N new cards added." or "No new emails found."
+
+The ticker scrolls horizontally inside a fixed-width clipped container when the message is too long. Width never changes regardless of subject length.
 
 ### Email signature stripping
 ```
@@ -249,11 +282,10 @@ Michelle Keller\nArt Director | PlanetFab Studio
 ```
 `[ \t]*\r?\n` tolerates trailing spaces and handles both CRLF and LF line endings. Everything from the match position onward is discarded. Implemented in `src/email-watcher.js` as `SIG_RE`.
 
-### IMAP implementation note
-`imapflow`'s `download()` API returns `{}` (empty object) when a message is not found. The fix is to use `client.fetch()` with `{ source: true }`, which returns each message's full RFC822 source as a `Buffer` on `message.source`.
+For HTML-only emails: `<br>` and closing block tags are converted to `\n` before stripping, ensuring the regex always has a newline to match.
 
 ### Claude system prompt
-The system prompt in `src/claude.js` produces **8 output fields**:
+The system prompt in `src/claude.js` produces **9 output fields**:
 
 | Field | Description |
 |---|---|
@@ -263,41 +295,43 @@ The system prompt in `src/claude.js` produces **8 output fields**:
 | `linkedin_hook` | Complete LinkedIn post, 150–250 words + hashtags |
 | `instagram_caption` | Instagram caption |
 | `blog_potential` | Yes/No + expansion notes |
-| `source_urls` | All URLs extracted from the email body |
-| `blog_post` | 600–800 word journalistic article in plain text with `\n\n` paragraph breaks |
+| `source_urls` | Populated by Node.js extraction; Claude is told to leave this empty |
+| `blog_post` | 600–800 word journalistic article. `<em></em>` is the only permitted HTML — used for titles of published works (books, magazines, films, exhibitions, albums, monographs) |
+| `meta_description` | SEO summary, hard max 155 chars, enforced by `truncateMeta()` after parse |
 
 `max_tokens` is set to 4000 to accommodate the full blog post alongside the other fields.
 
-**Web search:** The API call includes `tools: [{ type: 'web_search_20250305', name: 'web_search' }]`, Anthropic's built-in server-side search tool. When the email contains URLs, Claude fetches those pages first and uses the actual article content as primary source material. The `WEB SEARCH:` instruction in the system prompt directs Claude to do this before writing any output field. When web search runs, the response `content` array contains `server_tool_use` and `web_search_tool_result` blocks before the final text block — the code extracts the text block with `message.content.find(b => b.type === 'text')`.
+**Web search (disabled by default):** The `web_search_20250305` tool is NOT included in `processContent()`. It is only enabled in `enrichContent()`, which is called by the manual **Research & Enrich** button in the edit modal. A confirmation dialog warns the user of the $0.50–$1.00 estimated cost before proceeding.
 
-**Formatting rules (Strunk & White):** The `FORMATTING RULES` section of the system prompt constrains `blog_post` formatting: bold only for critical terms introduced for the first time, italic only for titles/foreign words/technical terms on first use, links only when directly citing a source, no headers, no underlines except hyperlinks. When in doubt, no formatting.
+**Formatting rules (Strunk & White):** The `FORMATTING RULES` section constrains `blog_post`: bold only for critical terms introduced for the first time, `<em></em>` for titles of works and foreign words, links only when directly citing a source, no headers, no underlines except hyperlinks. When in doubt, no formatting.
 
 ---
 
 ## Image Handling
 
 ### Storage
-Images from email attachments are stored as base64 in the `images` TEXT column (JSON array). Up to 3 images are stored per card. Each entry: `{ data: base64string, contentType, filename }`.
+Images from email attachments are stored as base64 in the `images` TEXT column (JSON array). Up to 3 images are stored per card. Each entry: `{ data: base64string, contentType, filename, caption? }`.
 
 The `getImageSrc(img)` function in `app.js` is the **single swap point** for the storage format — it returns `img.url || data:${img.contentType};base64,${img.data}`. When migrating to Cloudflare R2 or S3, only this function and the `storedImages` builder in `email-watcher.js` need to change.
 
 The `express.json` body size limit is set to `50mb` to handle base64 image arrays in PUT requests.
 
 ### Card display
-Each card shows up to 3 thumbnail images. Clicking a thumbnail opens a full-screen lightbox with previous/next navigation, a download button, and a counter. The lightbox is keyboard-navigable (←/→/Escape) and touch-friendly on mobile (nav buttons are positioned absolute over the image, not alongside it).
+Each card shows up to 3 thumbnail images. Clicking a thumbnail opens a full-screen lightbox with previous/next navigation, a download button, and a counter. The lightbox is keyboard-navigable (←/→/Escape) and touch-friendly on mobile.
 
 ### Edit modal image management
 - Up to 3 images per card — shown as thumbnails with an × remove button
 - **Hero badge** on the first thumbnail — the first image is always the featured/hero image
-- **Drag to reorder** using the Pointer Events API (`setPointerCapture` routes all move/up events regardless of pointer position; `touch-action: none` prevents scroll competition on mobile). Reorder logic uses splice with no-change detection for `dropIdx === srcIdx` and `dropIdx === srcIdx + 1`.
+- **Photo credit field** — a small text input below each thumbnail for optional caption/credit. Stored in the image object alongside `data`/`contentType`/`filename`. Sent to WordPress as both a Gutenberg `<figcaption>` on inline images and via PATCH to the WP media library caption field.
+- **Drag to reorder** using the Pointer Events API (`setPointerCapture` routes all move/up events regardless of pointer position; `touch-action: none` prevents scroll competition on mobile). The caption input is excluded from drag initiation.
 - **Add Image** button — opens a file picker for JPEG/PNG/WebP (max 3 total). Files are converted to base64 client-side via FileReader. Manually added images are NOT sent to Claude for analysis.
 
 ### LinkedIn image publishing
 When publishing to LinkedIn and the card has images, the first image is resized to **1200×627** (cover crop, 85% JPEG quality via `sharp`) and uploaded via the 3-step LinkedIn media API: register upload slot → PUT binary to pre-signed URL → create post with `shareMediaCategory: IMAGE`. Falls back to text-only post if no images or upload fails.
 
 ### WordPress image publishing
-- **First image**: resized to **1536×1024** JPEG → uploaded to WP media library → set as `featured_media`
-- **Additional images (2nd, 3rd)**: uploaded at original size/format → embedded as `<!-- wp:image -->` Gutenberg blocks after the first paragraph of the post body
+- **First image**: resized to **1536×1024** JPEG → uploaded to WP media library → set as `featured_media`. Caption set via PATCH to WP media endpoint if a credit is present.
+- **Additional images (2nd, 3rd)**: uploaded at original size/format → embedded as `<!-- wp:image -->` Gutenberg blocks after the first paragraph, with `<figcaption>` if a caption is present
 - Individual image upload failures are non-blocking (null is pushed to keep index alignment)
 
 ---
@@ -305,17 +339,20 @@ When publishing to LinkedIn and the card has images, the first image is resized 
 ## WordPress Integration
 
 ### Two-author publishing
-Each card has two blog buttons: **Blog as Fabrice** and **Blog as Michelle**. Both create a WordPress draft post using separate Application Passwords:
+Each card has two blog buttons: **Blog as Fabrice** and **Blog as Michelle**. Publishing to one does not affect the other — each has an independent green checkmark indicator. No approval status is required for either.
 
-| Button | Credentials used | Byline |
-|---|---|---|
-| Blog as Fabrice | `WORDPRESS_USERNAME` + `WORDPRESS_APP_PASSWORD` | Fabrice Frere |
-| Blog as Michelle | `WORDPRESS_MICHELLE_USERNAME` + `WORDPRESS_MICHELLE_APP_PASSWORD` | Michelle Keller |
+| Button | Credentials used |
+|---|---|
+| Blog as Fabrice | `WORDPRESS_USERNAME` + `WORDPRESS_APP_PASSWORD` |
+| Blog as Michelle | `WORDPRESS_MICHELLE_USERNAME` + `WORDPRESS_MICHELLE_APP_PASSWORD` |
 
 ### Post content
 WordPress receives the `blog_post` field as the post body (not `newsletter_blurb`). If `blog_post` is Quill HTML (starts with `<`), it is sent as-is with inline image blocks injected after the first `</p>`. If `blog_post` is plain text (pre-edit), it is wrapped in Gutenberg `<!-- wp:paragraph -->` blocks. If `blog_post` is empty, falls back to `newsletter_blurb`.
 
-On success, the WordPress editor opens in a new tab pointed at the draft. No approval status is required.
+### SEO and excerpt
+Each published post also receives:
+- **`yoast_meta.yoast_wpseo_metadesc`** — set to `meta_description` if present (Yoast SEO plugin)
+- **`excerpt.raw`** — set to the full `newsletter_blurb`; Elementor handles truncation in the archive view
 
 ### Generating an Application Password
 1. Log in to `planetfab.com/wp-admin`
@@ -333,18 +370,18 @@ On success, the WordPress editor opens in a new tab pointed at the draft. No app
 - Approved scope: `Share on LinkedIn`
 - Redirect URI: `https://hub.planetfab.com/auth/linkedin/callback`
 
-### Three accounts
+### Accounts
 | Account | Type | OAuth URL | Status |
 |---|---|---|---|
 | Fabrice Frere | Personal | `hub.planetfab.com/auth/linkedin/fabrice` | **Connected** (June 2026) |
-| Michelle Keller | Personal | `hub.planetfab.com/auth/linkedin/michelle` | **Needs reconnect** — token expired or not yet re-authorized |
+| Michelle Keller | Personal | `hub.planetfab.com/auth/linkedin/michelle` | **Needs reconnect** — token not yet re-authorized |
 | PlanetFab Studio | Company page | `hub.planetfab.com/auth/linkedin/planetfab` | Pending Marketing Developer Platform approval |
 
 ### Token lifetime
 LinkedIn personal access tokens expire (~60 days for standard apps). When a publish attempt fails with an auth error, re-connect via `/settings`.
 
 ### Known limitation — PlanetFab Company Page
-Posting to a LinkedIn Organization requires the `w_organization_social` scope and Marketing Developer Platform approval. Until granted, the PF LinkedIn button will fail. Personal posts (Fabrice and Michelle) work once OAuth is complete.
+Posting to a LinkedIn Organization requires the `w_organization_social` scope and Marketing Developer Platform approval. Until granted, the PF LinkedIn button is removed from the card UI. Personal posts (Fabrice and Michelle) work once OAuth is complete.
 
 ---
 
@@ -370,23 +407,40 @@ The Meta app is in **Development mode**. Only Facebook accounts listed as App Ad
 ## Dashboard Features
 
 ### Content cards
-Each card displays all content fields with labeled rows: Newsletter Blurb, LinkedIn Post, Instagram Caption, Blog Post, Blog Potential, and Source URLs. Each field label has a **copy-to-clipboard button** (permanent clipboard icon — always visible for mobile compatibility). Clicking copies the full field text; the icon swaps to a green checkmark for 2 seconds. Blog Post HTML is stripped to plain text before copying.
+Each card displays all content fields with labeled rows: Newsletter Blurb, LinkedIn Post, Instagram Caption, Blog Post, Blog Potential, and Source URLs. Each field label has a **copy-to-clipboard button** (always visible for mobile compatibility). Blog Post HTML is stripped to plain text before copying.
+
+Below each card: the original **email received date** (subtle, shown when available).
 
 ### Status workflow
 `Draft` → (click Approve) → `Approved` → (publish to a channel) → `Published`  
 At any point, content can also be marked `Newsletter Ready`.  
-Blog buttons work regardless of status.
+Blog buttons work on any status.
 
-### Edit modal
-Full-field editor with:
-- Live word count for newsletter blurb (target: 150 words)
-- Auto-grow textarea for Blog Potential
-- **Quill.js rich text editor** for Blog Post — supports bold, italic, underline, H2/H3 headings, and hyperlinks. Saves as HTML. Claude's plain-text output is auto-converted to `<p>` tags on first open.
-- **Copy-to-clipboard buttons** in each field label (right-aligned via `margin-left: auto`). Clicking copies the live DOM value — including unsaved edits — to clipboard, with a 2-second green checkmark. Blog Post reads from the Quill editor; all other fields read from their input/textarea. Buttons are always visible (not hover-only), implemented via `data-copy-field` placeholder buttons in HTML filled with SVG at startup by `initModalCopyButtons()`.
-- Image thumbnails with Hero badge, × remove, drag-to-reorder, and Add Image button
+Once a card is Published or Newsletter Ready, all channel buttons remain active. Each channel only disables once that specific channel has been published (per the green checkmark). Publishing to Fabrice LI does not affect Michelle LI, and vice versa.
 
-### Mobile layout
-Edit modal uses `max-width: 100%` (not `100vw`) to avoid the iOS scrollbar-width overflow. Textareas have `resize: vertical` via explicit ID-selector rules. All inputs have `font-size: 16px` on mobile to prevent iOS viewport zoom.
+### Edit modal fields
+| Field | Input type | Notes |
+|---|---|---|
+| Piece Title | text input | |
+| Section Name | text input | |
+| Newsletter Blurb | textarea | Live word count (target: 150 words) |
+| LinkedIn Post | textarea | |
+| Instagram Caption | textarea | |
+| Blog Potential | textarea | Auto-grows; Yes/No + expansion notes |
+| Blog Post | Quill rich text | Bold, italic, underline, H2/H3, links. `<em>` for work titles. Saves as HTML. |
+| Meta Description | text input | Live X/160 character counter; green at 150–160, red over 160 |
+| Source URLs | textarea | Comma-separated; pre-filled by Node.js extraction |
+| Status | select | Draft / Approved / Published / Newsletter Ready |
+| Images | thumbnail grid | Hero badge, × remove, drag-to-reorder, Add Image, photo credit input per image |
+
+### Research & Enrich button
+In the edit modal next to the Blog Post field. Triggers `enrichContent()` which re-enables web search for a single API call to deepen the content with external research. Shows a confirmation dialog with estimated cost ($0.50–$1.00) before proceeding. Updates all text fields (blurb, LinkedIn, Instagram, meta description, blog post) with enriched content; user reviews and saves manually.
+
+### Per-channel publish indicators
+Each channel button shows a **green ✓ checkmark** once published to that channel. The timestamp is stored in `published_channels` (JSON column in PostgreSQL) and survives deployments. Channels are independent — publishing Fabrice LI does not mark or disable Michelle LI.
+
+### Est. API cost display
+Header shows "Est. API cost this month: $X.XX" — calculated as card count × $0.10. Hidden on mobile.
 
 ### Deleting and Trash
 - **Single**: card moves to Trash (soft-delete: `deleted_at` set)
@@ -397,13 +451,14 @@ Edit modal uses `max-width: 100%` (not `100vw`) to avoid the iOS scrollbar-width
 ### Publishing buttons (per card)
 | Button | Destination | Requires |
 |---|---|---|
-| PF LinkedIn | PlanetFab company page | Approved + Marketing Developer Platform approval (pending) |
-| Fabrice LI | Fabrice's personal LinkedIn | Approved + Fabrice LinkedIn OAuth |
-| Michelle LI | Michelle's personal LinkedIn | Approved + Michelle LinkedIn OAuth (needs reconnect) |
-| Instagram | @planetfab Instagram | Approved + Instagram OAuth (pending Meta review) |
-| Newsletter | Marks as Newsletter Ready | Approved |
-| Blog as Fabrice | planetfab.com WordPress draft (Fabrice byline) | None — works on any status |
-| Blog as Michelle | planetfab.com WordPress draft (Michelle byline) | None — works on any status |
+| Fabrice LI | Fabrice's personal LinkedIn | Approved/Published + Fabrice LinkedIn OAuth |
+| Michelle LI | Michelle's personal LinkedIn | Approved/Published + Michelle LinkedIn OAuth (needs reconnect) |
+| Blog as Fabrice | planetfab.com WordPress draft (Fabrice byline) | None |
+| Blog as Michelle | planetfab.com WordPress draft (Michelle byline) | None |
+| Instagram | @planetfab Instagram | Approved/Published + Instagram OAuth (pending Meta review) |
+| Newsletter | Marks as Newsletter Ready | Approved/Published |
+
+Note: The **PlanetFab company LinkedIn button has been removed** from all cards. Company page publishing requires Marketing Developer Platform approval which is pending.
 
 ---
 
@@ -413,7 +468,7 @@ Edit modal uses `max-width: 100%` (not `100vw`) to avoid the iOS scrollbar-width
 The Meta app must pass App Review for `instagram_content_publish` before it works in production. Until then, Instagram publishing only works for Facebook accounts listed as admins/testers of Meta app `962437633354825`.
 
 ### 2. LinkedIn company page requires Marketing Developer Platform access
-Posting to the PlanetFab LinkedIn organization page requires LinkedIn's Marketing Developer Platform tier. Until approved, only personal LinkedIn posts (Fabrice and Michelle) work.
+Posting to the PlanetFab LinkedIn organization page requires LinkedIn's Marketing Developer Platform tier. Until approved, the button is not shown.
 
 ### 3. In-memory fallback without PostgreSQL
 When `DATABASE_URL` is not set, all data is stored in-memory and lost on every restart. On Railway, the PostgreSQL addon must be added for persistence.
@@ -422,33 +477,33 @@ When `DATABASE_URL` is not set, all data is stored in-memory and lost on every r
 Each person will need to re-authorize via `/settings` approximately every 60 days.
 
 ### 5. Images stored as base64 in PostgreSQL (not object storage)
-Email attachment images are stored as base64 JSON in the `images` column — up to 3 images, up to ~4 MB each. This works for the current two-person usage but will become unwieldy at scale. The `getImageSrc()` function in `app.js` is the designated swap point for migrating to Cloudflare R2 or S3: change it and the `storedImages` builder in `email-watcher.js`, nothing else.
+Email attachment images are stored as base64 JSON in the `images` column — up to 3 images, up to ~4 MB each. This works for the current two-person usage but will become unwieldy at scale. The `getImageSrc()` function in `app.js` is the designated swap point for migrating to Cloudflare R2 or S3.
 
 ### 6. No Notion integration in this version
-The original Make.com pipeline wrote to a Notion database (`the-database`, ID `372bf6f10d8f80728ef6f0dedcd8bae2`). This app does not write to Notion. The Make.com scenario still does.
+The original Make.com pipeline wrote to a Notion database. This app does not write to Notion. The Make.com scenario still does.
 
 ### 7. Single-region, no CDN
 Railway Hobby plan runs in a single region. Static assets are served directly by Express. Acceptable for a two-person private tool.
+
+### 8. Anthropic spend limit
+June 2026 spend limit: $350 (post-incident cap). From July 1 2026: $20/month. Current balance: ~$4. Monitor usage at console.anthropic.com.
 
 ---
 
 ## Features Still to Build
 
-### 1. Migrate image storage to Cloudflare R2 or S3
+### 1. Migrate image storage to Cloudflare R2
 **Current state:** Base64 in PostgreSQL `images` column — functional but not scalable.  
-**Desired state:** Upload each image to R2/S3 at processing time; store public URL in the database.  
+**Desired state:** Upload each image to R2 at processing time; store public URL in the database.  
 **Swap points:** `getImageSrc(img)` in `app.js` (display) and the `storedImages` builder in `email-watcher.js` (write). Required env vars: bucket name, region, access key, secret key.
 
-### 2. Image asset management — artwork vs. analysis distinction
-**Current state:** All attachments are treated identically.  
-**Desired state:** Distinguish finished assets (photography, design exports) from analysis references (mood boards, screenshots). Artwork should be preserved; references can be discarded after processing.
+### 2. Instagram publishing (pending Meta App Review)
+**Current state:** Code is complete; blocked by Meta Development mode.  
+**Action needed:** Submit `instagram_content_publish` for Meta App Review; switch app to Live mode.
 
-### 3. Platform-specific crop tools
-**Current state:** `sharp` resizes to fixed dimensions on publish. No user-controlled crop.  
-**Desired state:** Crop/resize UI in the edit modal with preset aspect ratios per platform (Instagram square, LinkedIn banner, WordPress featured image) before publishing.
-
-### 4. Notion sync
-Write processed content to the Notion database as a parallel record, replacing the Make.com automation entirely.
+### 3. Buzz page CSS improvements
+**Current state:** Functional but unstyled.  
+**Desired state:** Match the hub's PlanetFab brand aesthetic.
 
 ---
 
@@ -492,15 +547,15 @@ For a fresh Railway deployment or post-handoff setup, complete steps in this ord
 - [x] SSL certificate valid on `hub.planetfab.com`
 - [x] App loads at `hub.planetfab.com/login`
 - [x] Login works for both Fabrice and Michelle
-- [x] Check Email button returns content
+- [x] Check Email button returns content with real-time SSE progress
 - [x] LinkedIn OAuth completed for Fabrice (`/auth/linkedin/fabrice`)
 - [ ] LinkedIn OAuth for Michelle — needs to reconnect (`/auth/linkedin/michelle`)
 - [x] `WORDPRESS_USERNAME` + `WORDPRESS_APP_PASSWORD` set (Fabrice)
 - [ ] `WORDPRESS_MICHELLE_USERNAME` + `WORDPRESS_MICHELLE_APP_PASSWORD` set (Michelle)
 - [ ] Blog as Fabrice tested — opens WP editor in new tab
 - [ ] Blog as Michelle tested — opens WP editor in new tab under Michelle's byline
-- [ ] Instagram OAuth attempted — if Meta review not yet complete, note as pending
-- [ ] Make.com "Integration Email" scenario left running until hub is validated in production
+- [ ] Instagram OAuth attempted — pending Meta App Review
+- [ ] Make.com "Integration Email" scenario left running until hub is fully validated
 
 ---
 
