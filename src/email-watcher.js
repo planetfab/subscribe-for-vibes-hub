@@ -148,10 +148,19 @@ async function checkEmails(onProgress = () => {}) {
             .replace(/\t/g, '')
             .trim();
 
+          // Extract URLs from the signature-stripped body — done here in code so that
+          // URLs from the signature block are never captured, regardless of how Claude
+          // interprets "the entire input".
+          const bodyUrls = [...sanitized.matchAll(/https?:\/\/[^\s,<>"']+/g)]
+            .map(m => m[0].replace(/[.,;!?)'"\]]+$/, ''))
+            .filter((url, i, arr) => arr.indexOf(url) === i)
+            .join(', ');
+
           console.log(`[email] uid ${uid} — sanitized body: ${sanitized.length} chars`);
           if (sanitized.length > 0) {
             console.log(`[email] uid ${uid} — preview: "${sanitized.substring(0, 120)}…"`);
           }
+          if (bodyUrls) console.log(`[email] uid ${uid} — extracted URLs: ${bodyUrls}`);
 
           if (!sanitized && images.length === 0) {
             console.log(`[email] uid ${uid} — skipping: no body and no image attachments`);
@@ -166,7 +175,9 @@ async function checkEmails(onProgress = () => {}) {
           onProgress(`Processing: "${subject}"...`);
           const result = await processContent(subject, contentToProcess, images);
           onProgress('Saving to database...');
-          await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages, email_message_id: messageId, email_received_at: parsed.date || null });
+          // source_urls comes from our own extraction (bodyUrls), not from Claude,
+          // so signature-block URLs can never leak through.
+          await db.create({ ...result, source_urls: bodyUrls, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages, email_message_id: messageId, email_received_at: parsed.date || null });
           await db.markEmailProcessed(messageId);
           console.log(`[email] uid ${uid} — stored as "${result.piece_title}" and marked processed (message-id: ${messageId.substring(0, 40)}…)`);
           processed++;
