@@ -780,9 +780,30 @@ body.bulk-mode .card-actions { display: none; }
 }
 
 .edit-thumb-wrap {
-  position: relative;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
+
+.edit-thumb-img {
+  position: relative;
+}
+
+.img-caption-input {
+  display: block;
+  width: 80px;
+  margin-top: 4px;
+  padding: 2px 5px;
+  font-size: 10px;
+  font-family: var(--font);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-muted);
+  box-sizing: border-box;
+}
+.img-caption-input::placeholder { color: var(--ink-faint); }
+.img-caption-input:focus { outline: none; border-color: var(--ink-muted); color: var(--ink); }
 
 /* Reuse .card-thumb sizing — the same 80×64 box */
 .edit-thumb-wrap .card-thumb {

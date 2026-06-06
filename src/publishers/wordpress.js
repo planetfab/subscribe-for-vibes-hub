@@ -2,24 +2,30 @@ const axios = require('axios');
 const config = require('../config');
 const { resizeToJpeg, decodeBuffer } = require('../image-utils');
 
+// Build a Gutenberg wp:image block, including an optional figcaption.
+function wpImageBlock(url, caption) {
+  const captionAttr = caption ? `,"caption":${JSON.stringify(caption)}` : '';
+  const figcaption = caption
+    ? `<figcaption class="wp-element-caption">${caption}</figcaption>`
+    : '';
+  return `<!-- wp:image {"sizeSlug":"large"${captionAttr}} -->\n<figure class="wp-block-image size-large"><img src="${url}" alt=""/>${figcaption}</figure>\n<!-- /wp:image -->`;
+}
+
 // Build Gutenberg-compatible HTML for the post body from plain text.
 // Inline images (2nd, 3rd) are inserted as wp:image blocks after the first paragraph.
-function buildPostContent(blurb, inlineImageUrls) {
+// inlineImages: [{ url, caption? }]
+function buildPostContent(blurb, inlineImages) {
   const paragraphs = (blurb || '')
     .split(/\n{2,}/)
     .map(p => p.trim())
     .filter(Boolean)
     .map(p => `<!-- wp:paragraph -->\n<p>${p.replace(/\n/g, '<br>')}</p>\n<!-- /wp:paragraph -->`);
 
-  if (!inlineImageUrls.length) {
+  if (!inlineImages.length) {
     return paragraphs.join('\n\n') || '';
   }
 
-  const imgBlocks = inlineImageUrls
-    .map(url =>
-      `<!-- wp:image {"sizeSlug":"large"} -->\n<figure class="wp-block-image size-large"><img src="${url}" alt=""/></figure>\n<!-- /wp:image -->`
-    )
-    .join('\n\n');
+  const imgBlocks = inlineImages.map(m => wpImageBlock(m.url, m.caption)).join('\n\n');
 
   if (!paragraphs.length) return imgBlocks;
 
@@ -28,14 +34,11 @@ function buildPostContent(blurb, inlineImageUrls) {
 }
 
 // Build post body from Quill HTML. Inline images are inserted after the first </p>.
-function buildPostContentFromHtml(html, inlineImageUrls) {
-  if (!inlineImageUrls.length) return html || '';
+// inlineImages: [{ url, caption? }]
+function buildPostContentFromHtml(html, inlineImages) {
+  if (!inlineImages.length) return html || '';
 
-  const imgBlocks = inlineImageUrls
-    .map(url =>
-      `<!-- wp:image {"sizeSlug":"large"} -->\n<figure class="wp-block-image size-large"><img src="${url}" alt=""/></figure>\n<!-- /wp:image -->`
-    )
-    .join('\n\n');
+  const imgBlocks = inlineImages.map(m => wpImageBlock(m.url, m.caption)).join('\n\n');
 
   if (!html) return imgBlocks;
 
@@ -65,7 +68,7 @@ async function saveToWordPress(item, author = 'fabrice') {
   // Additional images → original size/format → embedded inline in the post body.
   // null is pushed on individual failures to keep index alignment; failures are non-blocking.
   const images = item.images || [];
-  const uploadedMedia = []; // { id, source_url } | null per image
+  const uploadedMedia = []; // { id, source_url, caption? } | null per image
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -95,8 +98,25 @@ async function saveToWordPress(item, author = 'fabrice') {
         }
       );
 
-      uploadedMedia.push({ id: mediaRes.data.id, source_url: mediaRes.data.source_url });
-      console.log(`[wordpress] uploaded media ${i + 1}/${images.length} — WP media ID ${mediaRes.data.id}`);
+      const mediaId = mediaRes.data.id;
+      const caption = img.caption || '';
+
+      // Set the caption on the WP media object so it appears in the media library
+      // and in theme templates that render the featured image caption.
+      if (caption) {
+        try {
+          await axios.post(
+            `${siteUrl}/wp-json/wp/v2/media/${mediaId}`,
+            { caption: { raw: caption } },
+            { headers: { ...authHeader, 'Content-Type': 'application/json' } }
+          );
+        } catch (capErr) {
+          console.error(`[wordpress] media ${mediaId} caption update failed: ${capErr.message}`);
+        }
+      }
+
+      uploadedMedia.push({ id: mediaId, source_url: mediaRes.data.source_url, caption });
+      console.log(`[wordpress] uploaded media ${i + 1}/${images.length} — WP media ID ${mediaId}${caption ? ' (with caption)' : ''}`);
     } catch (err) {
       console.error(`[wordpress] media upload ${i + 1} failed: ${err.message}`);
       uploadedMedia.push(null);
@@ -105,7 +125,7 @@ async function saveToWordPress(item, author = 'fabrice') {
 
   const featuredMediaId = uploadedMedia[0]?.id || null;
   // Images 2 and 3 (if uploaded successfully) are embedded inline in the post body
-  const inlineImageUrls = uploadedMedia.slice(1).filter(Boolean).map(m => m.source_url);
+  const inlineImages = uploadedMedia.slice(1).filter(Boolean).map(m => ({ url: m.source_url, caption: m.caption }));
 
   // Prefer blog_post (rich Quill HTML or Claude plain text) over newsletter_blurb.
   // If blog_post is HTML from Quill (starts with <), use the HTML-aware builder
@@ -113,11 +133,11 @@ async function saveToWordPress(item, author = 'fabrice') {
   let content;
   const blogPostText = (item.blog_post || '').trim();
   if (blogPostText && blogPostText.startsWith('<')) {
-    content = buildPostContentFromHtml(blogPostText, inlineImageUrls);
+    content = buildPostContentFromHtml(blogPostText, inlineImages);
   } else if (blogPostText) {
-    content = buildPostContent(blogPostText, inlineImageUrls);
+    content = buildPostContent(blogPostText, inlineImages);
   } else {
-    content = buildPostContent(item.newsletter_blurb, inlineImageUrls);
+    content = buildPostContent(item.newsletter_blurb, inlineImages);
   }
 
   const { data } = await axios.post(
@@ -135,7 +155,7 @@ async function saveToWordPress(item, author = 'fabrice') {
     wordpressPostId: data.id,
     editUrl: `${siteUrl}/wp-admin/post.php?post=${data.id}&action=edit`,
     featuredMediaId,
-    inlineImagesCount: inlineImageUrls.length,
+    inlineImagesCount: inlineImages.length,
   };
 }
 

@@ -536,9 +536,12 @@ function renderEditImages() {
 
   const thumbs = editImages.map((img, i) => `
     <div class="edit-thumb-wrap" data-idx="${i}">
-      <img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}">
-      <span class="hero-badge">Hero</span>
-      <button type="button" class="edit-thumb-remove" onclick="removeEditImage(${i})" aria-label="Remove image">&times;</button>
+      <div class="edit-thumb-img">
+        <img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}">
+        <span class="hero-badge">Hero</span>
+        <button type="button" class="edit-thumb-remove" onclick="removeEditImage(${i})" aria-label="Remove image">&times;</button>
+      </div>
+      <input type="text" class="img-caption-input" placeholder="Photo credit (optional)" value="${esc(img.caption || '')}" oninput="editImages[${i}].caption = this.value">
     </div>
   `).join('');
 
@@ -852,7 +855,7 @@ function setupImageDrag() {
 function startDrag(e) {
   const wrap = e.target.closest('.edit-thumb-wrap');
   // Ignore taps on the remove button; ignore if not in reorderable mode
-  if (!wrap || e.target.closest('.edit-thumb-remove')) return;
+  if (!wrap || e.target.closest('.edit-thumb-remove') || e.target.tagName === 'INPUT') return;
   if (!document.getElementById('editImages').classList.contains('reorderable')) return;
 
   e.preventDefault();
