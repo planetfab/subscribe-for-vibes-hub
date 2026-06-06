@@ -199,8 +199,12 @@ function channelCheck(item, channel) {
 }
 
 function cardHTML(item) {
-  const isApproved = item.status === 'Approved';
-  const dis = isApproved ? '' : 'disabled title="Approve content first"';
+  const isPublishable = item.status !== 'Draft';
+  function channelDis(channel) {
+    if (!isPublishable) return 'disabled title="Approve content first"';
+    if (item.published_channels?.[channel]) return 'disabled title="Already published to this channel"';
+    return '';
+  }
   const urls = (item.source_urls || '').split(',').map(u => u.trim()).filter(Boolean);
   const isSelected = selectedIds.has(item.id);
   const id = item.id;
@@ -237,16 +241,16 @@ function cardHTML(item) {
       ${item.status === 'Draft' ? `<button class="btn btn-approve btn-sm" onclick="approve('${id}')">Approve</button>` : ''}
     </div>
     <div class="card-actions-row">
-      <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','fabrice')" ${dis}>${channelCheck(item,'linkedin_fabrice')}Fabrice LI</button>
-      <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','michelle')" ${dis}>${channelCheck(item,'linkedin_michelle')}Michelle LI</button>
+      <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','fabrice')" ${channelDis('linkedin_fabrice')}>${channelCheck(item,'linkedin_fabrice')}Fabrice LI</button>
+      <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','michelle')" ${channelDis('linkedin_michelle')}>${channelCheck(item,'linkedin_michelle')}Michelle LI</button>
     </div>
     <div class="card-actions-row">
       <button class="btn btn-ghost btn-sm" onclick="saveBlog('${id}','fabrice')">${channelCheck(item,'blog_fabrice')}Blog as Fabrice</button>
       <button class="btn btn-ghost btn-sm" onclick="saveBlog('${id}','michelle')">${channelCheck(item,'blog_michelle')}Blog as Michelle</button>
     </div>
     <div class="card-actions-row">
-      <button class="btn btn-ghost btn-sm" onclick="publishInstagram('${id}')" ${dis}>${channelCheck(item,'instagram')}Instagram</button>
-      <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${id}')" ${dis}>${channelCheck(item,'newsletter')}Newsletter</button>
+      <button class="btn btn-ghost btn-sm" onclick="publishInstagram('${id}')" ${channelDis('instagram')}>${channelCheck(item,'instagram')}Instagram</button>
+      <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${id}')" ${channelDis('newsletter')}>${channelCheck(item,'newsletter')}Newsletter</button>
     </div>
     <div class="card-actions-row card-actions-delete">
       <button class="btn btn-danger btn-sm" onclick="openDeleteConfirm('${id}')">Delete</button>

@@ -6,7 +6,7 @@ const { publishToInstagram } = require('../publishers/instagram');
 const { saveToWordPress } = require('../publishers/wordpress');
 
 function requireApproved(item) {
-  if (item.status !== 'Approved') {
+  if (item.status === 'Draft') {
     const err = new Error('Content must be Approved before publishing');
     err.statusCode = 400;
     throw err;
