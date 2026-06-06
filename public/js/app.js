@@ -642,13 +642,35 @@ async function saveBlog(id, author) {
   }
 }
 
+// Sets ticker text and triggers the scroll animation when the text overflows
+// the clipped container. Removes any prior animation before measuring.
+function setTickerText(msg) {
+  const ticker = document.getElementById('checkProgress');
+  if (!ticker) return;
+  ticker.classList.remove('scrolling');
+  ticker.style.removeProperty('--ticker-shift');
+  ticker.textContent = msg;
+  // Two rAFs: first lets the DOM update, second lets layout complete
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const wrap = ticker.parentElement;
+    if (!wrap) return;
+    const overflow = ticker.scrollWidth - wrap.clientWidth;
+    if (overflow > 4) {
+      // Shift left by exactly the overflow so the end of the text lands at the
+      // right edge of the container, then pause before looping back to the start.
+      ticker.style.setProperty('--ticker-shift', `-${overflow}px`);
+      ticker.classList.add('scrolling');
+    }
+  }));
+}
+
 async function checkEmail() {
   const btn = document.getElementById('checkEmailBtn');
-  const progressSpan = document.getElementById('checkProgress');
-  // Lock current width so the button never shrinks during state changes
+  // Lock button width at its idle size — ticker is clipped to fit within this
   btn.style.minWidth = btn.offsetWidth + 'px';
   btn.disabled = true;
   btn.dataset.state = 'loading';
+  setTickerText('Connecting…');
 
   let processed = 0;
   let isError = false;
@@ -676,8 +698,8 @@ async function checkEmail() {
         if (!part.startsWith('data: ')) continue;
         let event;
         try { event = JSON.parse(part.slice(6)); } catch { continue; }
-        if (event.type === 'status' && progressSpan) {
-          progressSpan.textContent = event.message;
+        if (event.type === 'status') {
+          setTickerText(event.message);
         } else if (event.type === 'done') {
           processed = event.processed;
         } else if (event.type === 'error') {
@@ -712,7 +734,7 @@ async function checkEmail() {
     btn.style.minWidth = '';
     delete btn.dataset.state;
     delete btn.dataset.result;
-    if (progressSpan) progressSpan.textContent = 'Connecting…';
+    setTickerText('Connecting…'); // reset ticker text + stop any scroll animation
   }, 2500);
 }
 

@@ -214,10 +214,18 @@ body {
 
 .header-brand {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   flex: 1;
   min-width: 0;
+}
+
+.header-brand-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .header-wordmark {
@@ -235,6 +243,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.2;
 }
 
 .header-actions {
@@ -252,10 +261,11 @@ body {
 }
 
 .cost-display {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--ink-faint);
   white-space: nowrap;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
 }
 
 /* ── Filters ────────────────────────────────────────────────────────────── */
@@ -672,12 +682,15 @@ body.bulk-mode .card-actions { display: none; }
 .check-loading,
 .check-done { display: none; }
 
-/* Loading state: pulse the button, show spinner + text */
+/* Loading state: fixed-layout ticker; button width is locked by JS to idle width */
 #checkEmailBtn[data-state="loading"] .check-idle { display: none; }
 #checkEmailBtn[data-state="loading"] .check-loading {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  /* overflow hidden so ticker content never expands the button */
+  overflow: hidden;
+  max-width: 100%;
 }
 #checkEmailBtn[data-state="loading"] {
   animation: check-pulse 1.2s ease-in-out infinite;
@@ -706,6 +719,30 @@ body.bulk-mode .card-actions { display: none; }
   animation: spin 0.65s linear infinite;
   flex-shrink: 0;
   opacity: 0.7;
+}
+
+/* Ticker: clipped container that never grows; text scrolls inside when too long */
+.check-ticker-wrap {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.check-ticker {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.check-ticker.scrolling {
+  animation: check-ticker-scroll 7s ease-in-out infinite;
+}
+
+@keyframes check-ticker-scroll {
+  0%,  18% { transform: translateX(0); }
+  82%, 100% { transform: translateX(var(--ticker-shift, 0px)); }
 }
 
 @keyframes check-pulse {
@@ -1145,6 +1182,9 @@ body.bulk-mode .card-actions { display: none; }
   }
   .header-user { display: none; }
   .cost-display { display: none; }
+  /* On mobile the brand title is a single-line h1 only — no stacking needed */
+  .header-brand-title { flex-direction: row; align-items: baseline; gap: 0; }
+  .header-brand-title .cost-display { display: none; } /* redundant but explicit */
   .header-actions {
     flex: 0 0 100%;
     gap: 4px;
