@@ -118,13 +118,20 @@ async function checkEmails(onProgress = () => {}) {
           let bodyText = parsed.text || '';
           if (!bodyText && parsed.html) {
             console.log(`[email] uid ${uid} — using HTML fallback`);
+            // Convert block-level tags to newlines BEFORE stripping other tags so that
+            // the signature regex (which requires \n between name and title) can match.
             bodyText = parsed.html
-              .replace(/<[^>]*>/g, ' ')
+              .replace(/<br\s*\/?>/gi, '\n')
+              .replace(/<\/(?:p|div|li|tr|td|h[1-6]|blockquote|section|article)>/gi, '\n')
+              .replace(/<[^>]*>/g, '')
               .replace(/&amp;/g, '&')
               .replace(/&lt;/g, '<')
               .replace(/&gt;/g, '>')
               .replace(/&nbsp;/g, ' ')
-              .replace(/\s{2,}/g, ' ')
+              .replace(/[ \t]+/g, ' ')        // collapse horizontal whitespace only
+              .replace(/\n[ \t]+/g, '\n')     // trim leading spaces from each line
+              .replace(/[ \t]+\n/g, '\n')     // trim trailing spaces from each line
+              .replace(/\n{3,}/g, '\n\n')     // max two consecutive newlines
               .trim();
           }
 
@@ -151,9 +158,15 @@ async function checkEmails(onProgress = () => {}) {
           // Extract URLs from the signature-stripped body — done here in code so that
           // URLs from the signature block are never captured, regardless of how Claude
           // interprets "the entire input".
+          // Denylist: own-domain URLs that only ever appear in the email signature.
+          const SIG_DOMAINS = new Set(['planetfab.com']);
           const bodyUrls = [...sanitized.matchAll(/https?:\/\/[^\s,<>"']+/g)]
             .map(m => m[0].replace(/[.,;!?)'"\]]+$/, ''))
             .filter((url, i, arr) => arr.indexOf(url) === i)
+            .filter(url => {
+              try { return !SIG_DOMAINS.has(new URL(url).hostname.replace(/^www\./, '')); }
+              catch { return true; }
+            })
             .join(', ');
 
           console.log(`[email] uid ${uid} — sanitized body: ${sanitized.length} chars`);
