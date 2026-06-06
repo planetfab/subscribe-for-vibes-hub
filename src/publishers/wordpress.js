@@ -140,11 +140,7 @@ async function saveToWordPress(item, author = 'fabrice') {
     content = buildPostContent(item.newsletter_blurb, inlineImages);
   }
 
-  // Excerpt: first 30 words of newsletter_blurb + ellipsis for consistent archive previews.
-  const blurbWords = (item.newsletter_blurb || '').trim().split(/\s+/).filter(Boolean);
-  const excerptRaw = blurbWords.length
-    ? blurbWords.slice(0, 30).join(' ') + (blurbWords.length > 30 ? '…' : '')
-    : '';
+  const excerptRaw = (item.newsletter_blurb || '').trim();
 
   // Send meta_description to Yoast SEO (yoast_meta). WP silently ignores yoast_meta
   // when the plugin is absent.
