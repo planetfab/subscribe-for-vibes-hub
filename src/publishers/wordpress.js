@@ -140,14 +140,16 @@ async function saveToWordPress(item, author = 'fabrice') {
     content = buildPostContent(item.newsletter_blurb, inlineImages);
   }
 
-  // Send meta_description to Yoast SEO (yoast_meta) and as the WP excerpt as fallback.
-  // Both fields are included simultaneously: WP silently ignores yoast_meta when the
-  // plugin is absent, and Yoast takes precedence over the excerpt when it is present.
+  // Excerpt: first 30 words of newsletter_blurb + ellipsis for consistent archive previews.
+  const blurbWords = (item.newsletter_blurb || '').trim().split(/\s+/).filter(Boolean);
+  const excerptRaw = blurbWords.length
+    ? blurbWords.slice(0, 30).join(' ') + (blurbWords.length > 30 ? '…' : '')
+    : '';
+
+  // Send meta_description to Yoast SEO (yoast_meta). WP silently ignores yoast_meta
+  // when the plugin is absent.
   const metaFields = item.meta_description
-    ? {
-        yoast_meta: { yoast_wpseo_metadesc: item.meta_description },
-        excerpt:    { raw: item.meta_description },
-      }
+    ? { yoast_meta: { yoast_wpseo_metadesc: item.meta_description } }
     : {};
 
   const { data } = await axios.post(
@@ -157,6 +159,7 @@ async function saveToWordPress(item, author = 'fabrice') {
       content,
       status:  'draft',
       ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
+      ...(excerptRaw ? { excerpt: { raw: excerptRaw } } : {}),
       ...metaFields,
     },
     { headers: { ...authHeader, 'Content-Type': 'application/json' } }
