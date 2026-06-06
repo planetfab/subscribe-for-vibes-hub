@@ -251,6 +251,13 @@ body {
   margin-right: 4px;
 }
 
+.cost-display {
+  font-size: 10px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
 /* ── Filters ────────────────────────────────────────────────────────────── */
 
 .filters {
@@ -510,6 +517,10 @@ body.bulk-mode .card-header { padding-left: 26px; }
   font-size: 10px;
   color: var(--ink-faint);
   letter-spacing: 0.03em;
+}
+
+.card-date-email {
+  color: var(--ink-muted);
 }
 
 .card-actions {
@@ -1133,6 +1144,7 @@ body.bulk-mode .card-actions { display: none; }
     flex: 0 0 100%;
   }
   .header-user { display: none; }
+  .cost-display { display: none; }
   .header-actions {
     flex: 0 0 100%;
     gap: 4px;

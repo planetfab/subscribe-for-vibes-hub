@@ -75,6 +75,10 @@ async function init() {
       await pool.query(`
         ALTER TABLE content ADD COLUMN IF NOT EXISTS blog_post TEXT
       `);
+      // Migration: original email received date for display on cards
+      await pool.query(`
+        ALTER TABLE content ADD COLUMN IF NOT EXISTS email_received_at TIMESTAMPTZ
+      `);
       console.log('PostgreSQL database ready');
       return;
     } catch (err) {
@@ -111,8 +115,8 @@ async function create(data) {
       `INSERT INTO content
          (id, piece_title, section_name, newsletter_blurb, linkedin_hook,
           instagram_caption, blog_potential, source_urls, status, email_subject,
-          raw_content, images, email_message_id, blog_post)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10,$11,$12,$13)
+          raw_content, images, email_message_id, blog_post, email_received_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [
         id,
@@ -128,6 +132,7 @@ async function create(data) {
         imagesJson,
         data.email_message_id || null,
         data.blog_post || null,
+        data.email_received_at || null,
       ]
     );
     return parseRow(rows[0]);
@@ -326,27 +331,25 @@ async function countProcessedEmails() {
   return memProcessed.size;
 }
 
+// Returns null if not yet processed, or a string indicating which table matched.
 async function hasProcessedEmail(messageId) {
   if (pool) {
-    // Primary check: processed_emails dedup table
     const { rows: peRows } = await pool.query(
       'SELECT 1 FROM processed_emails WHERE message_id = $1',
       [messageId]
     );
-    if (peRows.length > 0) return true;
-    // Fallback: if a content row already carries this message_id (including deleted),
-    // treat it as processed — prevents recreating deleted cards when processed_emails
-    // loses its record (e.g. crash between db.create and markEmailProcessed)
+    if (peRows.length > 0) return 'processed_emails';
+    // Fallback: content row carries this message_id (including deleted) — prevents
+    // recreating deleted cards when processed_emails loses its record (e.g. crash
+    // between db.create and markEmailProcessed).
     const { rows: cRows } = await pool.query(
       'SELECT 1 FROM content WHERE email_message_id = $1 LIMIT 1',
       [messageId]
     );
-    if (cRows.length > 0) {
-      console.log(`[db] hasProcessedEmail: found via content table fallback — message_id: ${messageId.substring(0, 40)}…`);
-    }
-    return cRows.length > 0;
+    if (cRows.length > 0) return 'content';
+    return null;
   }
-  return memProcessed.has(messageId);
+  return memProcessed.has(messageId) ? 'processed_emails' : null;
 }
 
 async function markEmailProcessed(messageId) {
@@ -360,11 +363,22 @@ async function markEmailProcessed(messageId) {
   memProcessed.add(messageId);
 }
 
+async function countCardsThisMonth() {
+  if (pool) {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM content WHERE created_at >= date_trunc('month', NOW())`
+    );
+    return rows[0].n;
+  }
+  const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  return memStore.filter(i => i.created_at >= start).length;
+}
+
 module.exports = {
   init,
   create, getAll, getById, update,
   deleteById, deleteMany,
   getTrash, restoreById, permanentDeleteById, emptyTrash, purgeOldTrash,
   getSetting, setSetting,
-  countProcessedEmails, hasProcessedEmail, markEmailProcessed,
+  countProcessedEmails, hasProcessedEmail, markEmailProcessed, countCardsThisMonth,
 };

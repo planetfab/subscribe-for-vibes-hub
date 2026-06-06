@@ -6,13 +6,14 @@ const config = require('./config');
 const { processContent } = require('./claude');
 const db = require('./database');
 
-async function checkEmails() {
+async function checkEmails(onProgress = () => {}) {
   if (!config.imap.password) {
     console.log('[email] IMAP_PASSWORD not configured — skipping');
     return 0;
   }
 
   console.log(`[email] Connecting to ${config.imap.host}:${config.imap.port} as ${config.imap.user}`);
+  onProgress('Connecting to mailbox...');
 
   const client = new ImapFlow({
     host: config.imap.host,
@@ -38,9 +39,11 @@ async function checkEmails() {
       const status = await client.status('INBOX', { messages: true, unseen: true });
       console.log(`[email] Mailbox status — total: ${status.messages}, unseen: ${status.unseen}`);
 
-      // Search for all emails from the last 7 days regardless of seen flag,
-      // since another mail client marks messages read before we can see them.
-      // Pass { uid: true } so search returns actual UIDs, not sequence numbers.
+      // Search ALL emails from the last 7 days regardless of seen/unseen flag.
+      // Apple Mail marks messages read on the server before the hub can see them,
+      // so filtering by unseen would miss everything. Dedup via processed_emails
+      // table + email_message_id column on content prevents reprocessing.
+      onProgress('Searching last 7 days...');
       const since = new Date();
       since.setDate(since.getDate() - 7);
       const uids = await client.search({ since }, { uid: true });
@@ -48,8 +51,11 @@ async function checkEmails() {
 
       if (!uids.length) {
         console.log('[email] No messages in the last 7 days — done');
+        onProgress('No emails found in last 7 days');
         return 0;
       }
+
+      onProgress(`Found ${uids.length} email${uids.length !== 1 ? 's' : ''} — checking for new...`);
 
       // fetch() with source:true returns the full raw RFC822 message as a Buffer on
       // message.source. uid:true in options makes the range be interpreted as UIDs.
@@ -80,9 +86,12 @@ async function checkEmails() {
                  .digest('hex');
           console.log(`[email] uid ${uid} — message-id: ${rawMessageId || `(none, using hash ${messageId.substring(0, 12)}…)`}`);
 
-          const alreadyDone = await db.hasProcessedEmail(messageId);
-          if (alreadyDone) {
-            console.log(`[email] uid ${uid} — already processed, skipping`);
+          // Check both the processed_emails dedup table AND the email_message_id
+          // column on content rows (catches cases where a card was saved but the
+          // dedup record was lost, and also prevents reprocessing deleted cards).
+          const skipReason = await db.hasProcessedEmail(messageId);
+          if (skipReason) {
+            console.log(`[email] uid ${uid} — skipping "${subject}": found in ${skipReason} table (message-id: ${messageId.substring(0, 40)}…)`);
             continue;
           }
 
@@ -154,8 +163,10 @@ async function checkEmails() {
           const contentToProcess = sanitized || imageOnlyPrompt;
 
           console.log(`[email] uid ${uid} — sending to Claude${images.length > 0 ? ` with ${images.length} image(s)` : ''}${!sanitized ? ' (image-only)' : ''}`);
+          onProgress(`Processing: "${subject}"...`);
           const result = await processContent(subject, contentToProcess, images);
-          await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages, email_message_id: messageId });
+          onProgress('Saving to database...');
+          await db.create({ ...result, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages, email_message_id: messageId, email_received_at: parsed.date || null });
           await db.markEmailProcessed(messageId);
           console.log(`[email] uid ${uid} — stored as "${result.piece_title}" and marked processed (message-id: ${messageId.substring(0, 40)}…)`);
           processed++;

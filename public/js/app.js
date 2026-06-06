@@ -20,6 +20,7 @@ async function init() {
     if (el) el.textContent = me.username;
   } catch {}
   await loadContent();
+  loadStats();
 }
 
 /* ── Data ───────────────────────────────────────────────────────────────── */
@@ -32,6 +33,14 @@ async function loadContent() {
   } catch (err) {
     showToast('Failed to load content', true);
   }
+}
+
+async function loadStats() {
+  try {
+    const stats = await apiFetch('/api/content/stats');
+    const el = document.getElementById('costDisplay');
+    if (el) el.textContent = `Est. API cost this month: $${stats.estimatedCost}`;
+  } catch {}
 }
 
 function updateCounts() {
@@ -213,6 +222,7 @@ function cardHTML(item) {
     ${sourceField}
   </div>
   ${item.images?.length ? `<div class="card-images">${item.images.map((img, i) => `<img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}" onclick="openLightbox('${id}',${i})">`).join('')}</div>` : ''}
+  ${item.email_received_at ? `<div class="card-date card-date-email">Email received: ${formatDate(item.email_received_at)}</div>` : ''}
   ${item.created_at ? `<div class="card-date">${formatDate(item.created_at)}</div>` : ''}
   <div class="card-actions">
     <button class="btn btn-ghost btn-sm" onclick="openEdit('${id}')">Edit</button>
@@ -634,6 +644,7 @@ async function saveBlog(id, author) {
 
 async function checkEmail() {
   const btn = document.getElementById('checkEmailBtn');
+  const progressSpan = document.getElementById('checkProgress');
   // Lock current width so the button never shrinks during state changes
   btn.style.minWidth = btn.offsetWidth + 'px';
   btn.disabled = true;
@@ -643,9 +654,40 @@ async function checkEmail() {
   let isError = false;
 
   try {
-    const result = await apiFetch('/api/content/check-email', { method: 'POST' });
-    processed = result.processed;
+    const response = await fetch('/api/content/check-email', { method: 'POST' });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE events are delimited by \n\n
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop(); // last part may be incomplete
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        let event;
+        try { event = JSON.parse(part.slice(6)); } catch { continue; }
+        if (event.type === 'status' && progressSpan) {
+          progressSpan.textContent = event.message;
+        } else if (event.type === 'done') {
+          processed = event.processed;
+        } else if (event.type === 'error') {
+          throw new Error(event.message);
+        }
+      }
+    }
+
     await loadContent();
+    loadStats();
     if (processed > 0) showToast(`${processed} new item${processed !== 1 ? 's' : ''} added`);
   } catch (err) {
     isError = true;
@@ -670,6 +712,7 @@ async function checkEmail() {
     btn.style.minWidth = '';
     delete btn.dataset.state;
     delete btn.dataset.result;
+    if (progressSpan) progressSpan.textContent = 'Connecting…';
   }, 2500);
 }
 

@@ -106,13 +106,34 @@ router.post('/bulk-delete', async (req, res) => {
   }
 });
 
-router.post('/check-email', async (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
-    const count = await checkEmails();
-    res.json({ message: 'Email check complete', processed: count });
+    const count = await db.countCardsThisMonth();
+    res.json({ thisMonthCount: count, estimatedCost: (count * 0.10).toFixed(2) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.post('/check-email', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = (data) => {
+    try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+  };
+
+  try {
+    const count = await checkEmails((msg) => send({ type: 'status', message: msg }));
+    send({ type: 'done', processed: count });
+  } catch (err) {
+    send({ type: 'error', message: err.message });
+  }
+
+  res.end();
 });
 
 module.exports = router;
