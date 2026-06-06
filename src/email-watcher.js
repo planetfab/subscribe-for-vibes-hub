@@ -216,7 +216,19 @@ async function checkEmails(onProgress = () => {}) {
 }
 
 function startEmailWatcher() {
-  console.log('[email] Automatic polling disabled — email checks are manual only');
+  // Scheduled email checks: 8 am and 2 pm Eastern — cost is zero when no new emails exist
+  // because the IMAP dedup check runs before any Claude API call.
+  cron.schedule('0 8,14 * * *', () => {
+    const stamp = new Date().toISOString();
+    console.log(`[email] Scheduled check starting at ${stamp}`);
+    checkEmails().then(count => {
+      console.log(`[email] Scheduled check complete — ${count} new email${count !== 1 ? 's' : ''} processed`);
+    }).catch(err => {
+      console.error(`[email] Scheduled check failed: ${err.message}`);
+    });
+  }, { timezone: 'America/New_York' });
+  console.log('[email] Scheduled checks active — 8 am and 2 pm Eastern');
+
   // Purge trash items older than 5 days — runs once daily at 3 am
   db.purgeOldTrash().catch(err => console.error('[db] Initial trash purge failed:', err.message));
   cron.schedule('0 3 * * *', () => {
