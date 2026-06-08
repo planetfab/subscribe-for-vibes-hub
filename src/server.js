@@ -55,6 +55,10 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/login.html'));
 });
 
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/privacy.html'));
+});
+
 app.get('/', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });

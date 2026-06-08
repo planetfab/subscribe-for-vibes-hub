@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Subscribe for Vibes Hub</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    .privacy-container {
+      max-width: 680px;
+      margin: 60px auto;
+      padding: 0 24px 80px;
+    }
+    .privacy-wordmark {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted, #888);
+      margin-bottom: 8px;
+    }
+    .privacy-container h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 4px;
+    }
+    .privacy-container .effective-date {
+      font-size: 13px;
+      color: var(--text-muted, #888);
+      margin-bottom: 40px;
+    }
+    .privacy-container h2 {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin: 36px 0 10px;
+      color: var(--text-muted, #888);
+    }
+    .privacy-container p {
+      font-size: 15px;
+      line-height: 1.7;
+      margin: 0 0 14px;
+    }
+    .privacy-container ul {
+      font-size: 15px;
+      line-height: 1.7;
+      padding-left: 20px;
+      margin: 0 0 14px;
+    }
+    .privacy-container ul li {
+      margin-bottom: 6px;
+    }
+    .privacy-back {
+      display: inline-block;
+      margin-top: 48px;
+      font-size: 13px;
+      color: var(--text-muted, #888);
+      text-decoration: none;
+    }
+    .privacy-back:hover {
+      color: var(--text-primary, #111);
+    }
+  </style>
+</head>
+<body>
+  <div class="privacy-container">
+    <div class="privacy-wordmark">PlanetFab Studio</div>
+    <h1>Privacy Policy</h1>
+    <p class="effective-date">Subscribe for Vibes Hub &mdash; Effective June 2026</p>
+
+    <h2>What This Tool Is</h2>
+    <p>Subscribe for Vibes Hub is a private editorial dashboard operated by PlanetFab Studio (Fabrice Frere and Michelle Keller) for internal content production. It is not a public service and is not intended for use by third parties.</p>
+
+    <h2>What Data Is Processed</h2>
+    <p>The hub processes the following data:</p>
+    <ul>
+      <li><strong>Email content</strong> — messages sent to a dedicated PlanetFab Studio inbox are read via IMAP and their text and image attachments are processed to produce editorial drafts.</li>
+      <li><strong>Images</strong> — image attachments from those emails are stored in the application database and may be resized and uploaded to external platforms when content is published.</li>
+      <li><strong>Session data</strong> — a session cookie is set on login and expires after 7 days. It is used only to maintain your authenticated session.</li>
+      <li><strong>Published content</strong> — text and images you choose to publish are sent to LinkedIn, Instagram, or WordPress on your explicit action. No content is published automatically.</li>
+    </ul>
+
+    <h2>Third-Party Services</h2>
+    <p>The following third-party services receive data as part of normal operation:</p>
+    <ul>
+      <li><strong>Anthropic (Claude API)</strong> — email subject lines, body text, and image attachments are sent to Anthropic's API to generate editorial drafts. Anthropic's privacy policy applies to data sent to their API.</li>
+      <li><strong>LinkedIn</strong> — when you publish to LinkedIn, your post text and optionally an image are sent to the LinkedIn API on your behalf using your authorized OAuth token.</li>
+      <li><strong>Meta (Instagram)</strong> — when you publish to Instagram, your caption and an image (temporarily hosted on the connected WordPress site) are sent to the Meta Graph API on your behalf.</li>
+      <li><strong>WordPress</strong> — when you publish a blog post or publish to Instagram, content and images are sent to the connected WordPress site via its REST API using Application Password credentials.</li>
+      <li><strong>Railway</strong> — the application and its PostgreSQL database are hosted on Railway. All application data at rest resides on Railway's infrastructure.</li>
+    </ul>
+
+    <h2>Who Has Access</h2>
+    <p>Access to this hub is limited to authorized PlanetFab Studio team members (currently Fabrice Frere and Michelle Keller). No other parties have access to the dashboard or the data it stores.</p>
+
+    <h2>Data Retention</h2>
+    <p>Content cards deleted from the dashboard are soft-deleted and permanently purged after 5 days. Email deduplication records are retained indefinitely to prevent reprocessing. Session data expires after 7 days of inactivity.</p>
+
+    <h2>Cookies</h2>
+    <p>This site sets one session cookie on login. It contains only a session identifier — no personal data. It is marked Secure and SameSite=Lax. No analytics, advertising, or tracking cookies are used.</p>
+
+    <h2>Contact</h2>
+    <p>PlanetFab Studio<br>
+    New York City<br>
+    <a href="https://www.planetfab.com">www.planetfab.com</a></p>
+
+    <a href="/login" class="privacy-back">&larr; Back to hub</a>
+  </div>
+</body>
+</html>
