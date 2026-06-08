@@ -5,7 +5,7 @@ const axios = require('axios');
 const config = require('../config');
 const db = require('../database');
 
-const GRAPH = 'https://graph.facebook.com/v19.0';
+const GRAPH = 'https://graph.facebook.com/v25.0';
 
 // Permissions needed for Instagram content publishing via a Business page
 const SCOPES = [
@@ -130,7 +130,7 @@ router.get('/', (req, res) => {
     state,
   });
 
-  res.redirect(`https://www.facebook.com/v19.0/dialog/oauth?${params}`);
+  res.redirect(`https://www.facebook.com/v25.0/dialog/oauth?${params}`);
 });
 
 async function saveInstagramAccount(account) {

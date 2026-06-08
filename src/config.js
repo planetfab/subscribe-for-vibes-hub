@@ -51,7 +51,8 @@ module.exports = {
     appId: process.env.META_APP_ID || '962437633354825',
     appSecret: process.env.META_APP_SECRET,
     redirectUri: process.env.INSTAGRAM_REDIRECT_URI || 'https://hub.planetfab.com/auth/instagram/callback',
-    instagramToken: process.env.INSTAGRAM_ACCESS_TOKEN,
-    instagramAccountId: process.env.INSTAGRAM_ACCOUNT_ID,
+    instagramToken:     process.env.INSTAGRAM_ACCESS_TOKEN,
+    instagramUserId:    process.env.INSTAGRAM_USER_ID,
+    instagramPageId:    process.env.INSTAGRAM_PAGE_ID,
   },
 };

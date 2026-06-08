@@ -2,12 +2,12 @@ const axios = require('axios');
 const config = require('../config');
 const db = require('../database');
 
-const GRAPH = 'https://graph.facebook.com/v19.0';
+const GRAPH = 'https://graph.facebook.com/v25.0';
 
 async function publishToInstagram(item) {
   // DB tokens (set via OAuth) take precedence over env vars
   const token     = await db.getSetting('instagram_access_token') || config.meta.instagramToken;
-  const accountId = await db.getSetting('instagram_account_id')   || config.meta.instagramAccountId;
+  const accountId = await db.getSetting('instagram_account_id')   || config.meta.instagramUserId;
 
   if (!token || !accountId) {
     throw new Error(

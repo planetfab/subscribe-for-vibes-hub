@@ -559,4 +559,204 @@ For a fresh Railway deployment or post-handoff setup, complete steps in this ord
 
 ---
 
+---
+
+## Replication Guide — Deploying for a New Client
+
+This section covers everything needed to spin up a new instance of this app for a different brand. Budget **4–8 hours** for a clean first deployment when all credentials are in hand; longer if LinkedIn Marketing Developer Platform approval or Meta App Review is needed (those can take days or weeks and are outside your control).
+
+---
+
+### What to Change in the System Prompt
+
+The system prompt lives entirely in `src/claude.js` in the `SYSTEM_PROMPT` constant. It is a single long string — no external config file. For a new client, replace every brand-specific element:
+
+| What to change | Where in the prompt | Example replacement |
+|---|---|---|
+| "Michelle Keller" (name) | First sentence and throughout | "Sara Kim" |
+| "PlanetFab Studio" (studio name) | PLANETFAB CONTEXT section | "Studio Meridian" |
+| "New York City" | PLANETFAB CONTEXT section | "Los Angeles" |
+| "Subscribe for Vibes" (newsletter name) | First sentence | "The Friday Signal" |
+| Newsletter section names | SECTION NAMES block | Replace with the client's own taxonomy |
+| Clients / references | PLANETFAB CONTEXT section | Remove or replace with client's actual clients |
+| Voice descriptors | VOICE block | Rewrite to match the new brand personality |
+| THREE-MOVE STRUCTURE | Leave as-is or adapt | This is editorial scaffolding — works for most brands |
+| BLOG POST instructions | PlanetFab lens sentence | Replace "design, branding, visual culture" with client's domain |
+
+**The output field names (`section_name`, `piece_title`, etc.) and JSON format must not change** — they are referenced throughout `src/email-watcher.js` and `src/database.js`.
+
+The `enrichContent()` function (Research & Enrich button) uses the same `SYSTEM_PROMPT`, so voice changes apply automatically there too.
+
+---
+
+### Swapping WordPress for Squarespace
+
+The WordPress publisher is in `src/publishers/wordpress.js`. WordPress uses the WP REST API (`/wp-json/wp/v2/posts` and `/wp-json/wp/v2/media`) authenticated via HTTP Basic Auth with an Application Password.
+
+**Squarespace does not have a comparable publishing API.** As of 2026 the Squarespace API v1 supports only Commerce, Inventory, and Profiles — it does not expose blog post creation endpoints. Options:
+
+1. **Remove blog publishing entirely** — the hub still works; LinkedIn, Instagram, and newsletter marking are unaffected. Set `WORDPRESS_SITE_URL` to a placeholder and leave the blog buttons disabled in the UI.
+2. **Use Squarespace's Make.com or Zapier integration** — post to a Make.com webhook that creates the Squarespace blog item. Replace `saveToWordPress()` in `src/publishers/wordpress.js` with a call to `axios.post(webhookUrl, payload)`.
+3. **Switch to another REST-capable CMS** — Ghost (has a Content API), Webflow (CMS API v2), or WordPress.com (uses the same REST API as self-hosted WP). These are simpler swaps: only `wordpress.js` and the relevant env vars change.
+
+If replacing WordPress: update `src/publishers/wordpress.js`, add the new publisher's env vars to `config.js`, and update the route in `src/routes/publish.js` that calls `saveToWordPress()`. The UI buttons in `public/js/app.js` are labeled "Blog as X" and can be relabeled or removed.
+
+---
+
+### Credentials to Collect from a New Client
+
+Gather all of the following **before starting**. Missing credentials mid-setup will stall deployment.
+
+**Infrastructure**
+- [ ] A dedicated email inbox the client controls with IMAP access (host, port, username, password). Gmail works if IMAP is enabled and an App Password is generated (not the main password).
+- [ ] Preferred domain/subdomain for the hub (e.g. `hub.clientdomain.com`) and access to their DNS provider to add a CNAME record.
+
+**Anthropic**
+- [ ] Anthropic account with a funded API key. Create at console.anthropic.com. Set a spend limit immediately — recommend $20–50/month for a two-person team.
+
+**LinkedIn** (if LinkedIn publishing is wanted)
+- [ ] A LinkedIn Developer App with "Share on LinkedIn" scope approved. Redirect URI must match the new hub's domain: `https://hub.clientdomain.com/auth/linkedin/callback`. Record the Client ID and Client Secret.
+- [ ] Each person who will publish to LinkedIn must complete the OAuth flow after deployment via `/settings`.
+- [ ] For a company page: the LinkedIn app must apply for Marketing Developer Platform access. This is a separate approval process that LinkedIn evaluates manually.
+
+**Instagram / Meta** (if Instagram publishing is wanted)
+- [ ] A Meta Developer App with the Instagram Business account linked to a Facebook Page. Redirect URI: `https://hub.clientdomain.com/auth/instagram/callback`. Record the App ID and App Secret.
+- [ ] The Meta app must pass App Review for `instagram_content_publish` before non-admin accounts can post. Plan for days to weeks.
+
+**WordPress** (if blog publishing is wanted; skip for Squarespace)
+- [ ] WordPress site URL (self-hosted or WordPress.com Business plan — both support the REST API).
+- [ ] Application Password for each author. Generated in WP Admin → Users → Profile → Application Passwords. Must be generated by an account with at least Editor role.
+- [ ] Confirm the Yoast SEO plugin is installed if SEO meta descriptions should populate (WP silently ignores `yoast_meta` if Yoast is absent — no error, just no SEO data).
+
+**Session security**
+- [ ] Generate a `SESSION_SECRET` with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- [ ] Choose dashboard passwords for each user (`FABRICE_PASSWORD` / `MICHELLE_PASSWORD` — rename these env vars to match the client's user names, and update `src/config.js` `users` object accordingly).
+
+---
+
+### Railway Setup Steps (New Project)
+
+1. **Fork or copy the repo** to a new GitHub org/account for the client, or create a new private repo and push the code. Update the `HANDOFF.md` client header.
+
+2. **Create a Railway project**
+   - railway.app → New Project → Deploy from GitHub repo
+   - Select the new repo, branch `main`
+   - Railway auto-detects Node.js via NIXPACKS and uses `Procfile` (`web: node src/server.js`)
+
+3. **Add PostgreSQL**
+   - Project → + New → Database → Add PostgreSQL
+   - `DATABASE_URL` is injected automatically; no action needed
+
+4. **Set environment variables** (Project → Service → Variables)
+   - All variables from the "Required to run" table in the Environment Variables section above
+   - Replace `LINKEDIN_REDIRECT_URI` with the new domain: `https://hub.clientdomain.com/auth/linkedin/callback`
+   - Replace `INSTAGRAM_REDIRECT_URI` similarly
+   - Replace `WORDPRESS_SITE_URL` with the client's WordPress URL
+   - Set `NODE_ENV=production`
+
+5. **Deploy** — Railway auto-deploys on push to `main`. Watch the build log for errors. A successful first deploy initializes all database tables automatically.
+
+6. **Add custom domain**
+   - Railway → Service → Settings → Custom Domains → Add Domain → enter `hub.clientdomain.com`
+   - Railway provides a CNAME target (e.g. `abc123.railway.app`)
+   - Add a CNAME record in the client's DNS provider: host `hub`, value `abc123.railway.app`
+   - SSL certificate provisions automatically (allow up to 10 minutes)
+
+7. **Complete OAuth flows**
+   - Visit `https://hub.clientdomain.com/settings`
+   - Connect each LinkedIn account
+   - Connect Instagram
+   - Verify connections show green status
+
+---
+
+### DNS Setup
+
+The app needs one DNS record: a CNAME from the hub subdomain to the Railway-provided domain.
+
+```
+Type:  CNAME
+Host:  hub          (or whatever subdomain the client chose)
+Value: abc123.railway.app   (Railway provides this in Service → Settings → Domains)
+TTL:   3600
+```
+
+**Common DNS providers:** Dreamhost, Cloudflare, GoDaddy, Namecheap, Google Domains — all support CNAME records in their dashboard. On Cloudflare, proxy mode (orange cloud) may interfere with Railway's SSL certificate provisioning; set to DNS Only (grey cloud) if the certificate doesn't provision.
+
+If the client uses a root domain (`clientdomain.com`) rather than a subdomain, some DNS providers support ANAME/ALIAS records for apex domains. Railway recommends using a subdomain.
+
+---
+
+### LinkedIn OAuth Setup (New App)
+
+LinkedIn requires a Developer App per deployment. The same app can support multiple redirect URIs, but each deployment needs its own redirect URI added to the app's authorized list.
+
+1. Go to developer.linkedin.com → My Apps → Create App
+2. App name: `[Client Name] Hub` (internal only)
+3. LinkedIn Page: link to the client's company page
+4. OAuth 2.0 settings → Add redirect URL: `https://hub.clientdomain.com/auth/linkedin/callback`
+5. Products → Request "Share on LinkedIn" — approved immediately for most apps
+6. Copy Client ID and Client Secret → set as `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` in Railway
+
+For each person who will post: after deployment, visit `https://hub.clientdomain.com/auth/linkedin/[username]` to complete their OAuth authorization. Tokens expire approximately every 60 days for standard apps; users re-authorize at `/settings`.
+
+For company page posting, also request "Marketing Developer Platform" product access. LinkedIn evaluates this manually and may take days or reject non-qualifying apps.
+
+---
+
+### Estimated Time to Replicate
+
+| Phase | Time estimate | Blocker? |
+|---|---|---|
+| Fork repo + update system prompt + branding | 1–2 hours | No |
+| Railway setup + env vars + DNS | 1 hour | No |
+| LinkedIn app creation + personal OAuth | 30 min | No |
+| WordPress Application Passwords | 15 min | No |
+| Email inbox + IMAP setup | 30 min | No |
+| Meta app + Instagram OAuth | 1–2 hours | No |
+| Meta App Review (`instagram_content_publish`) | **Days to weeks** | Yes — external |
+| LinkedIn Marketing Developer Platform | **Days to weeks** | Yes — external |
+
+**Total for a functional hub (no Instagram, no company LinkedIn):** ~4 hours  
+**Total fully featured:** 4 hours setup + waiting period for Meta/LinkedIn approvals
+
+---
+
+### Pre-Deployment Checklist (New Client)
+
+Confirm each item is in hand before starting:
+
+**Credentials in hand**
+- [ ] IMAP host, port, username, password for the dedicated inbox
+- [ ] Anthropic API key with spend limit set
+- [ ] LinkedIn app Client ID + Client Secret (redirect URI added)
+- [ ] Meta App ID + App Secret (redirect URI added)
+- [ ] WordPress site URL + Application Password per author (or decision to skip blog publishing)
+- [ ] New `SESSION_SECRET` generated
+- [ ] Dashboard usernames and passwords decided
+
+**Code ready**
+- [ ] System prompt updated for new brand voice, newsletter name, section names, studio context
+- [ ] Email signature stripping regex in `src/email-watcher.js` updated (`SIG_RE`) — the current regex matches "Fabrice G. Frere\nCreative Director | PlanetFab Studio"; change to match the new client's email signature
+- [ ] `src/config.js` `users` object updated if user names changed (rename `fabrice`/`michelle` keys)
+- [ ] `WORDPRESS_SITE_URL` default in `src/config.js` updated from `https://www.planetfab.com` to the new client's URL (or remove the default and require the env var)
+- [ ] Dashboard CSS (`public/css/app.css`) updated with client brand colors if needed
+
+**Infrastructure ready**
+- [ ] New GitHub repo exists
+- [ ] Railway project created + PostgreSQL addon added
+- [ ] All env vars set in Railway
+- [ ] DNS CNAME record added
+- [ ] Custom domain added in Railway, SSL active
+
+**Post-deploy verification**
+- [ ] App loads at the new hub URL
+- [ ] Login works for all users
+- [ ] Check Email button processes a test email end-to-end
+- [ ] At least one LinkedIn account connected
+- [ ] Blog publish tested (creates draft in WP editor)
+- [ ] Spend limit confirmed at console.anthropic.com
+
+---
+
 *Built using Claude Code, June 2026.*
