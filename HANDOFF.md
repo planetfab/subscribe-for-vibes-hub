@@ -146,7 +146,8 @@ All variables must be set in Railway → Project → Service → Variables. They
 | `META_APP_ID` | `962437633354825` (already set) |
 | `META_APP_SECRET` | Meta app secret (stored in password manager) |
 | `INSTAGRAM_ACCESS_TOKEN` | Page-level access token — permanent, set by OAuth flow |
-| `INSTAGRAM_ACCOUNT_ID` | Instagram Business Account ID — set by OAuth flow |
+| `INSTAGRAM_USER_ID` | Instagram Business Account ID — set by OAuth flow (was `INSTAGRAM_ACCOUNT_ID` before June 2026) |
+| `INSTAGRAM_PAGE_ID` | Facebook Page ID connected to the Instagram account — available for future use |
 
 ### WordPress
 
@@ -389,8 +390,20 @@ Posting to a LinkedIn Organization requires the `w_organization_social` scope an
 
 ### App details
 - Meta App ID: `962437633354825`
+- Graph API version: `v25.0`
 - Redirect URI: `https://hub.planetfab.com/auth/instagram/callback`
 - Instagram account: `@planetfab` (Business account, connected to a Facebook Page)
+- OAuth scopes: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`
+
+### How publishing works
+`src/publishers/instagram.js` uses the two-step Meta Content Publishing API:
+1. **Upload image to WordPress** — the first card image is resized to 1080×1080 JPEG and uploaded to the WordPress media library using Fabrice's credentials. This gives Meta a public HTTPS URL to fetch. **Fabrice's WordPress credentials must be set** for Instagram publishing to work.
+2. **Create media container** — POST `/{ig-user-id}/media` with `image_url` (the WordPress `source_url`) and `caption`.
+3. **Publish container** — POST `/{ig-user-id}/media_publish` with the container ID.
+
+**Cards without images cannot be published to Instagram** — the publisher throws a clear error before making any API call.
+
+**WP media library side effect:** each Instagram publish uploads one image to the WordPress media library as an orphaned attachment (no post parent). It does not affect the blog or any front-end pages but will accumulate in the media library over time.
 
 ### Token lifetime
 The page-level access token does not expire under normal conditions. If Meta invalidates it, re-connect from `/settings`.
@@ -455,7 +468,7 @@ Header shows "Est. API cost this month: $X.XX" — calculated as card count × $
 | Michelle LI | Michelle's personal LinkedIn | Approved/Published + Michelle LinkedIn OAuth (needs reconnect) |
 | Blog as Fabrice | planetfab.com WordPress draft (Fabrice byline) | None |
 | Blog as Michelle | planetfab.com WordPress draft (Michelle byline) | None |
-| Instagram | @planetfab Instagram | Approved/Published + Instagram OAuth (pending Meta review) |
+| Instagram | @planetfab Instagram | Approved/Published + Instagram OAuth + card must have an image + Fabrice's WordPress credentials set (pending Meta App Review for non-admin accounts) |
 | Newsletter | Marks as Newsletter Ready | Approved/Published |
 
 Note: The **PlanetFab company LinkedIn button has been removed** from all cards. Company page publishing requires Marketing Developer Platform approval which is pending.
@@ -465,7 +478,7 @@ Note: The **PlanetFab company LinkedIn button has been removed** from all cards.
 ## Known Limitations
 
 ### 1. Instagram blocked by Meta App Review
-The Meta app must pass App Review for `instagram_content_publish` before it works in production. Until then, Instagram publishing only works for Facebook accounts listed as admins/testers of Meta app `962437633354825`.
+The publishing code is complete (June 2026): images are uploaded to WordPress to obtain a public URL, then posted to Instagram via the Meta Graph API v25.0. The pipeline works end-to-end for accounts listed as App Admins or Testers of Meta app `962437633354825`. Until Meta App Review approves `instagram_content_publish`, it will not work for other accounts. Submit App Review and switch the app to Live mode to unlock production use.
 
 ### 2. LinkedIn company page requires Marketing Developer Platform access
 Posting to the PlanetFab LinkedIn organization page requires LinkedIn's Marketing Developer Platform tier. Until approved, the button is not shown.
@@ -621,6 +634,7 @@ Gather all of the following **before starting**. Missing credentials mid-setup w
 
 **Instagram / Meta** (if Instagram publishing is wanted)
 - [ ] A Meta Developer App with the Instagram Business account linked to a Facebook Page. Redirect URI: `https://hub.clientdomain.com/auth/instagram/callback`. Record the App ID and App Secret.
+- [ ] Fabrice's (or primary user's) WordPress Application Password must be set — the Instagram publisher uploads each image to WordPress to obtain a public URL before passing it to Meta. Instagram publishing will fail without this.
 - [ ] The Meta app must pass App Review for `instagram_content_publish` before non-admin accounts can post. Plan for days to weeks.
 
 **WordPress** (if blog publishing is wanted; skip for Squarespace)
@@ -704,6 +718,47 @@ For company page posting, also request "Marketing Developer Platform" product ac
 
 ---
 
+### Instagram / Meta OAuth Setup (New App)
+
+#### Prerequisites
+- The client must have an **Instagram Business account** (not a personal or Creator account).
+- That Instagram account must be **connected to a Facebook Page** the client administers. This is done in Instagram Settings → Account → Switch to Professional Account, then linking a Facebook Page.
+- The Facebook Page admin must also be an admin of the Meta Developer App you create below.
+
+#### Create the Meta Developer App
+1. Go to developers.facebook.com → My Apps → Create App
+2. App type: **Business**
+3. App name: `[Client Name] Hub` (internal only — users never see this)
+4. Connect a Business Portfolio if prompted (use the client's Meta Business account)
+5. In the app dashboard, go to **App Settings → Basic**:
+   - Add `hub.clientdomain.com` to **App Domains**
+   - Set a Privacy Policy URL (required for App Review — can be the client's website)
+   - Record **App ID** and **App Secret** → set as `META_APP_ID` and `META_APP_SECRET` in Railway
+6. Go to **Use Cases → Customize** → add the **Instagram Graph API** use case
+7. Add these permissions: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`
+8. Go to **App Settings → Advanced** → add the OAuth redirect URI: `https://hub.clientdomain.com/auth/instagram/callback`
+
+#### Development mode vs Live mode
+- The app starts in **Development mode**. In this mode, only Facebook accounts listed as App Admins or Testers can complete OAuth and publish. This is sufficient for testing.
+- To allow any account to authenticate, submit the app for **Meta App Review** (`instagram_content_publish` and `pages_read_engagement`), then switch to **Live mode** in the app dashboard. App Review requires a Privacy Policy, a demo video showing the publishing flow, and a business justification. Plan for days to weeks.
+
+#### Complete the OAuth flow
+After deployment, visit `https://hub.clientdomain.com/settings` and click **Connect Instagram**. The OAuth flow:
+1. Redirects to Facebook login
+2. Asks permission for the scopes listed above
+3. Exchanges the auth code for a short-lived user token, then a long-lived page token (~60 days for user token; page token does not expire)
+4. Discovers the Instagram Business Account connected to the user's Facebook Page
+5. Saves `instagram_access_token` (page token) and `instagram_account_id` (Instagram user ID) to the `settings` database table
+
+After connecting, the Settings page shows the connected Instagram username.
+
+#### Image hosting dependency
+Instagram publishing requires a **publicly accessible image URL** — the Meta API fetches the image from that URL when creating the media container. This app uses the WordPress media library as the image host: the first card image is uploaded to WordPress (resized to 1080×1080 JPEG) and the returned `source_url` is passed to Meta. **This means `WORDPRESS_USERNAME` and `WORDPRESS_APP_PASSWORD` must be set even if the client does not use blog publishing.** The uploaded images accumulate as orphaned attachments in the WP media library.
+
+If the client has no WordPress site, an alternative image host (S3, Cloudflare R2, or any public URL) would need to replace the `uploadImageToWordPress()` call in `src/publishers/instagram.js`.
+
+---
+
 ### Estimated Time to Replicate
 
 | Phase | Time estimate | Blocker? |
@@ -730,8 +785,8 @@ Confirm each item is in hand before starting:
 - [ ] IMAP host, port, username, password for the dedicated inbox
 - [ ] Anthropic API key with spend limit set
 - [ ] LinkedIn app Client ID + Client Secret (redirect URI added)
-- [ ] Meta App ID + App Secret (redirect URI added)
-- [ ] WordPress site URL + Application Password per author (or decision to skip blog publishing)
+- [ ] Meta App ID + App Secret (redirect URI added, Instagram Business account linked to a Facebook Page)
+- [ ] WordPress site URL + Application Password for primary author — required for both blog publishing **and** Instagram image hosting
 - [ ] New `SESSION_SECRET` generated
 - [ ] Dashboard usernames and passwords decided
 
