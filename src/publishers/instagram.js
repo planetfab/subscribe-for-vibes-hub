@@ -52,6 +52,7 @@ async function publishToInstagram(item) {
   const containerRes = await axios.post(`${GRAPH}/${accountId}/media`, {
     image_url: imageUrl,
     caption: item.instagram_caption,
+    cross_post_to_facebook_page: true,
     access_token: token,
   });
 
