@@ -130,7 +130,7 @@ function renderInstagramCard(s) {
   ${detailsHtml}${pickerHtml}
   <div class="li-env-ref">
     <span class="li-detail-label">Railway env vars</span>
-    <code>INSTAGRAM_ACCESS_TOKEN</code><code>INSTAGRAM_ACCOUNT_ID</code>
+    <code>INSTAGRAM_ACCESS_TOKEN</code><code>INSTAGRAM_USER_ID</code>
   </div>
   <div class="settings-card-actions">
     <a href="/auth/instagram" class="btn btn-primary btn-sm">
