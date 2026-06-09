@@ -67,9 +67,9 @@ async function processContent(subject, content, images = []) {
   }
 
   const message = await getClient().messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-20250514',
     max_tokens: 4000,
-    system: SYSTEM_PROMPT,
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   });
 
@@ -106,9 +106,9 @@ async function enrichContent(item) {
   ].join('\n');
 
   const message = await getClient().messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-20250514',
     max_tokens: 4000,
-    system: SYSTEM_PROMPT,
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     tools: [{ type: 'web_search_20250305', name: 'web_search' }],
     messages: [{ role: 'user', content: userText }],
   });
