@@ -5,7 +5,7 @@
 **Founders:** Fabrice Frere & Michelle Keller  
 **Live URL:** https://hub.planetfab.com  
 **GitHub:** https://github.com/planetfab/subscribe-for-vibes-hub  
-**Last updated:** June 6 2026
+**Last updated:** June 9 2026
 
 ---
 
@@ -35,7 +35,7 @@ The Make.com scenario is still running as a parallel backup and should remain ac
 |---|---|
 | Backend | Node.js 18+ with Express |
 | Frontend | Vanilla HTML / CSS / JavaScript (no framework) |
-| AI | Anthropic Claude API (`claude-sonnet-4-5`) |
+| AI | Anthropic Claude API (`claude-sonnet-4-20250514`, prompt caching enabled) |
 | Database | PostgreSQL via Railway addon (in-memory fallback for local dev) |
 | Email | IMAP via `imapflow` + `mailparser` (Dreamhost, `buzzby@planetfab.com`) |
 | Image processing | `sharp` — cover-crop resizing for LinkedIn (1200×627) and WordPress (1536×1024) |
@@ -91,6 +91,7 @@ subscribe-for-vibes-hub/
 │   ├── index.html                 # Main dashboard
 │   ├── login.html                 # Login page
 │   ├── settings.html              # OAuth connection settings
+│   ├── privacy.html               # Public privacy policy (required for Meta App Review)
 │   ├── robots.txt                 # Disallow all crawlers
 │   ├── css/app.css                # Full stylesheet (PlanetFab brand)
 │   └── js/
@@ -145,9 +146,9 @@ All variables must be set in Railway → Project → Service → Variables. They
 |---|---|
 | `META_APP_ID` | `962437633354825` (already set) |
 | `META_APP_SECRET` | Meta app secret (stored in password manager) |
-| `INSTAGRAM_ACCESS_TOKEN` | Page-level access token — permanent, set by OAuth flow |
-| `INSTAGRAM_USER_ID` | Instagram Business Account ID — set by OAuth flow (was `INSTAGRAM_ACCOUNT_ID` before June 2026) |
-| `INSTAGRAM_PAGE_ID` | Facebook Page ID connected to the Instagram account — available for future use |
+| `INSTAGRAM_ACCESS_TOKEN` | Page-level access token — permanent, set by OAuth flow. **Set in Railway June 9 2026.** |
+| `INSTAGRAM_USER_ID` | Instagram Business Account ID — set by OAuth flow (was `INSTAGRAM_ACCOUNT_ID` before June 2026). **Set in Railway June 9 2026.** |
+| `INSTAGRAM_PAGE_ID` | Facebook Page ID connected to the Instagram account — used for `cross_post_to_facebook_page`. **Set in Railway June 9 2026.** |
 
 ### WordPress
 
@@ -302,6 +303,8 @@ The system prompt in `src/claude.js` produces **9 output fields**:
 
 `max_tokens` is set to 4000 to accommodate the full blog post alongside the other fields.
 
+**Prompt caching (June 9 2026):** The `system` parameter is passed as an array with `cache_control: { type: "ephemeral" }` on the system prompt block. The system prompt is ~1,100 tokens and identical across every call, so cached reads save ~90% of those input tokens. Cache TTL is 5 minutes, refreshed on each hit. Both `processContent()` and `enrichContent()` use this format. Cache hits appear in the API response as `cache_read_input_tokens`.
+
 **Web search (disabled by default):** The `web_search_20250305` tool is NOT included in `processContent()`. It is only enabled in `enrichContent()`, which is called by the manual **Research & Enrich** button in the edit modal. A confirmation dialog warns the user of the $0.50–$1.00 estimated cost before proceeding.
 
 **Formatting rules (Strunk & White):** The `FORMATTING RULES` section constrains `blog_post`: bold only for critical terms introduced for the first time, `<em></em>` for titles of works and foreign words, links only when directly citing a source, no headers, no underlines except hyperlinks. When in doubt, no formatting.
@@ -398,7 +401,7 @@ Posting to a LinkedIn Organization requires the `w_organization_social` scope an
 ### How publishing works
 `src/publishers/instagram.js` uses the two-step Meta Content Publishing API:
 1. **Upload image to WordPress** — the first card image is resized to 1080×1080 JPEG and uploaded to the WordPress media library using Fabrice's credentials. This gives Meta a public HTTPS URL to fetch. **Fabrice's WordPress credentials must be set** for Instagram publishing to work.
-2. **Create media container** — POST `/{ig-user-id}/media` with `image_url` (the WordPress `source_url`) and `caption`.
+2. **Create media container** — POST `/{ig-user-id}/media` with `image_url` (the WordPress `source_url`), `caption`, and `cross_post_to_facebook_page: true` (cross-posts to the linked Facebook Page automatically).
 3. **Publish container** — POST `/{ig-user-id}/media_publish` with the container ID.
 
 **Cards without images cannot be published to Instagram** — the publisher throws a clear error before making any API call.
@@ -408,12 +411,8 @@ Posting to a LinkedIn Organization requires the `w_organization_social` scope an
 ### Token lifetime
 The page-level access token does not expire under normal conditions. If Meta invalidates it, re-connect from `/settings`.
 
-### Known limitation — Meta App Review
-The Meta app is in **Development mode**. Only Facebook accounts listed as App Admins or Testers can authenticate. The `instagram_content_publish` permission requires Meta App Review before production use.
-
-**To go live:**
-1. Complete Meta App Review for `instagram_content_publish` and `pages_read_engagement`
-2. Switch app to **Live mode** in the Meta Developer dashboard
+### Meta App status (as of June 9 2026)
+The Meta app (`962437633354825`) is in **Live mode**. Instagram publishing is fully operational for the `@planetfab` account. The `instagram_content_publish` and `pages_read_engagement` permissions were approved via Meta App Review and the app was switched to Live mode in June 2026.
 
 ---
 
@@ -468,7 +467,7 @@ Header shows "Est. API cost this month: $X.XX" — calculated as card count × $
 | Michelle LI | Michelle's personal LinkedIn | Approved/Published + Michelle LinkedIn OAuth (needs reconnect) |
 | Blog as Fabrice | planetfab.com WordPress draft (Fabrice byline) | None |
 | Blog as Michelle | planetfab.com WordPress draft (Michelle byline) | None |
-| Instagram | @planetfab Instagram | Approved/Published + Instagram OAuth + card must have an image + Fabrice's WordPress credentials set (pending Meta App Review for non-admin accounts) |
+| Instagram | @planetfab Instagram + linked Facebook Page | Approved/Published + Instagram OAuth + card must have an image + Fabrice's WordPress credentials set |
 | Newsletter | Marks as Newsletter Ready | Approved/Published |
 
 Note: The **PlanetFab company LinkedIn button has been removed** from all cards. Company page publishing requires Marketing Developer Platform approval which is pending.
@@ -477,8 +476,8 @@ Note: The **PlanetFab company LinkedIn button has been removed** from all cards.
 
 ## Known Limitations
 
-### 1. Instagram blocked by Meta App Review
-The publishing code is complete (June 2026): images are uploaded to WordPress to obtain a public URL, then posted to Instagram via the Meta Graph API v25.0. The pipeline works end-to-end for accounts listed as App Admins or Testers of Meta app `962437633354825`. Until Meta App Review approves `instagram_content_publish`, it will not work for other accounts. Submit App Review and switch the app to Live mode to unlock production use.
+### 1. Instagram publishing — live as of June 9 2026
+Images are uploaded to WordPress to obtain a public URL, then posted to Instagram via the Meta Graph API v25.0 with `cross_post_to_facebook_page: true`. The Meta app (`962437633354825`) is in **Live mode** and `instagram_content_publish` is approved. Publishing is fully operational for `@planetfab`. Railway env vars `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_USER_ID`, and `INSTAGRAM_PAGE_ID` are set.
 
 ### 2. LinkedIn company page requires Marketing Developer Platform access
 Posting to the PlanetFab LinkedIn organization page requires LinkedIn's Marketing Developer Platform tier. Until approved, the button is not shown.
@@ -510,9 +509,8 @@ June 2026 spend limit: $350 (post-incident cap). From July 1 2026: $20/month. Cu
 **Desired state:** Upload each image to R2 at processing time; store public URL in the database.  
 **Swap points:** `getImageSrc(img)` in `app.js` (display) and the `storedImages` builder in `email-watcher.js` (write). Required env vars: bucket name, region, access key, secret key.
 
-### 2. Instagram publishing (pending Meta App Review)
-**Current state:** Code is complete; blocked by Meta Development mode.  
-**Action needed:** Submit `instagram_content_publish` for Meta App Review; switch app to Live mode.
+### 2. ~~Instagram publishing~~ — complete (June 9 2026)
+Meta app in Live mode, `instagram_content_publish` approved, all Railway env vars set. No further action needed.
 
 ### 3. Buzz page CSS improvements
 **Current state:** Functional but unstyled.  
@@ -567,7 +565,7 @@ For a fresh Railway deployment or post-handoff setup, complete steps in this ord
 - [ ] `WORDPRESS_MICHELLE_USERNAME` + `WORDPRESS_MICHELLE_APP_PASSWORD` set (Michelle)
 - [ ] Blog as Fabrice tested — opens WP editor in new tab
 - [ ] Blog as Michelle tested — opens WP editor in new tab under Michelle's byline
-- [ ] Instagram OAuth attempted — pending Meta App Review
+- [x] Instagram OAuth completed — Meta app in Live mode, `INSTAGRAM_ACCESS_TOKEN` / `INSTAGRAM_USER_ID` / `INSTAGRAM_PAGE_ID` set in Railway (June 9 2026)
 - [ ] Make.com "Integration Email" scenario left running until hub is fully validated
 
 ---
@@ -740,7 +738,8 @@ For company page posting, also request "Marketing Developer Platform" product ac
 
 #### Development mode vs Live mode
 - The app starts in **Development mode**. In this mode, only Facebook accounts listed as App Admins or Testers can complete OAuth and publish. This is sufficient for testing.
-- To allow any account to authenticate, submit the app for **Meta App Review** (`instagram_content_publish` and `pages_read_engagement`), then switch to **Live mode** in the app dashboard. App Review requires a Privacy Policy, a demo video showing the publishing flow, and a business justification. Plan for days to weeks.
+- To allow any account to authenticate, submit the app for **Meta App Review** (`instagram_content_publish` and `pages_read_engagement`), then switch to **Live mode** in the app dashboard. App Review requires a Privacy Policy URL (the hub has one at `/privacy`), a demo video showing the publishing flow, and a business justification. Plan for days to weeks.
+- **PlanetFab status:** The `962437633354825` app is already in Live mode as of June 2026. For a new client, repeat this process with their own Meta Developer App.
 
 #### Complete the OAuth flow
 After deployment, visit `https://hub.clientdomain.com/settings` and click **Connect Instagram**. The OAuth flow:
