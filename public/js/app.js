@@ -229,7 +229,6 @@ function cardHTML(item) {
     ${cardField(item, 'linkedin_hook', 'LinkedIn Post', 160)}
     ${cardField(item, 'instagram_caption', 'Instagram Caption', 120)}
     ${cardField(item, 'blog_post', 'Blog Post', 120)}
-    ${cardField(item, 'blog_potential', 'Blog Potential', 80)}
     ${sourceField}
   </div>
   ${item.images?.length ? `<div class="card-images">${item.images.map((img, i) => `<img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}" onclick="openLightbox('${id}',${i})">`).join('')}</div>` : ''}
@@ -481,8 +480,6 @@ function openEdit(id) {
   document.getElementById('editNewsletterBlurb').value = item.newsletter_blurb || '';
   document.getElementById('editLinkedinHook').value = item.linkedin_hook || '';
   document.getElementById('editInstagramCaption').value = item.instagram_caption || '';
-  const bpField = document.getElementById('editBlogPotential');
-  bpField.value = item.blog_potential || '';
   document.getElementById('editMetaDescription').value = item.meta_description || '';
   document.getElementById('editSourceUrls').value = item.source_urls || '';
   document.getElementById('editStatus').value = item.status || 'Draft';
@@ -493,11 +490,6 @@ function openEdit(id) {
   updateBlurbCount();
   updateMetaDescCount();
   document.getElementById('editModal').style.display = 'flex';
-  // Auto-size blog potential after the modal is painted — scrollHeight is 0 while display:none
-  requestAnimationFrame(() => {
-    bpField.style.height = 'auto';
-    bpField.style.height = bpField.scrollHeight + 'px';
-  });
 
   // Initialize Quill once; on subsequent openEdit calls just update its content
   if (!quill) {
@@ -584,11 +576,6 @@ function updateMetaDescCount() {
 }
 document.getElementById('editMetaDescription')?.addEventListener('input', updateMetaDescCount);
 
-// Real-time auto-grow for Blog Potential textarea
-document.getElementById('editBlogPotential')?.addEventListener('input', function () {
-  this.style.height = 'auto';
-  this.style.height = this.scrollHeight + 'px';
-});
 
 document.getElementById('editForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -600,7 +587,6 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     newsletter_blurb: document.getElementById('editNewsletterBlurb').value,
     linkedin_hook: document.getElementById('editLinkedinHook').value,
     instagram_caption: document.getElementById('editInstagramCaption').value,
-    blog_potential: document.getElementById('editBlogPotential').value,
     meta_description: document.getElementById('editMetaDescription').value,
     source_urls: document.getElementById('editSourceUrls').value,
     status: document.getElementById('editStatus').value,

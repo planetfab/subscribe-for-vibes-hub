@@ -71,7 +71,6 @@ async function init() {
         newsletter_blurb  TEXT,
         linkedin_hook     TEXT,
         instagram_caption TEXT,
-        blog_potential    TEXT,
         source_urls       TEXT,
         status            TEXT NOT NULL DEFAULT 'Draft',
         email_subject     TEXT,
@@ -113,10 +112,10 @@ async function create(data) {
     const { rows } = await pool.query(
       `INSERT INTO content
          (id, piece_title, section_name, newsletter_blurb, linkedin_hook,
-          instagram_caption, blog_potential, source_urls, status, email_subject,
+          instagram_caption, source_urls, status, email_subject,
           raw_content, images, email_message_id, blog_post, email_received_at,
           meta_description)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9,$10,$11,$12,$13,$14,$15)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'Draft',$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [
         id,
@@ -125,7 +124,6 @@ async function create(data) {
         data.newsletter_blurb,
         data.linkedin_hook,
         data.instagram_caption,
-        data.blog_potential,
         data.source_urls,
         data.email_subject,
         data.raw_content,
@@ -164,7 +162,7 @@ async function getById(id) {
 
 const ALLOWED_COLUMNS = new Set([
   'piece_title', 'section_name', 'newsletter_blurb', 'linkedin_hook',
-  'instagram_caption', 'blog_potential', 'source_urls', 'status',
+  'instagram_caption', 'source_urls', 'status',
   'email_subject', 'raw_content', 'blog_post',
 ]);
 

@@ -5,7 +5,7 @@
 **Founders:** Fabrice Frere & Michelle Keller  
 **Live URL:** https://hub.planetfab.com  
 **GitHub:** https://github.com/planetfab/subscribe-for-vibes-hub  
-**Last updated:** June 9 2026
+**Last updated:** June 10 2026
 
 ---
 
@@ -35,7 +35,7 @@ The Make.com scenario is still running as a parallel backup and should remain ac
 |---|---|
 | Backend | Node.js 18+ with Express |
 | Frontend | Vanilla HTML / CSS / JavaScript (no framework) |
-| AI | Anthropic Claude API (`claude-sonnet-4-20250514`, prompt caching enabled) |
+| AI | Anthropic Claude API (`claude-sonnet-4-5`, prompt caching enabled) |
 | Database | PostgreSQL via Railway addon (in-memory fallback for local dev) |
 | Email | IMAP via `imapflow` + `mailparser` (Dreamhost, `buzzby@planetfab.com`) |
 | Image processing | `sharp` — cover-crop resizing for LinkedIn (1200×627) and WordPress (1536×1024) |
@@ -211,7 +211,6 @@ The app creates and migrates all tables automatically at startup. Current column
 | `newsletter_blurb` | TEXT | 150-word newsletter entry |
 | `linkedin_hook` | TEXT | Full LinkedIn post (150–250 words + hashtags) |
 | `instagram_caption` | TEXT | |
-| `blog_potential` | TEXT | Yes/No + notes |
 | `source_urls` | TEXT | Comma-separated; extracted in Node.js after signature stripping, not by Claude |
 | `blog_post` | TEXT | 600–800 word article; stored as Quill HTML after first edit; `<em>` tags used for titles of published works |
 | `meta_description` | TEXT | SEO meta description, max 155 chars; sent to Yoast SEO + WP excerpt on blog publish |
@@ -296,7 +295,6 @@ The system prompt in `src/claude.js` produces **9 output fields**:
 | `newsletter_blurb` | 150-word newsletter entry in Michelle's voice |
 | `linkedin_hook` | Complete LinkedIn post, 150–250 words + hashtags |
 | `instagram_caption` | Instagram caption |
-| `blog_potential` | Yes/No + expansion notes |
 | `source_urls` | Populated by Node.js extraction; Claude is told to leave this empty |
 | `blog_post` | 600–800 word journalistic article. `<em></em>` is the only permitted HTML — used for titles of published works (books, magazines, films, exhibitions, albums, monographs) |
 | `meta_description` | SEO summary, hard max 155 chars, enforced by `truncateMeta()` after parse |
