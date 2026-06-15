@@ -19,11 +19,6 @@ const SCOPES = [
 router.get('/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
-  console.log('[ig-oauth] callback hit — session ID:', req.sessionID);
-  console.log('[ig-oauth] incoming state:', state);
-  console.log('[ig-oauth] stored session state:', req.session.instagramOAuthState);
-  console.log('[ig-oauth] session contents:', JSON.stringify(req.session));
-
   if (error) {
     const msg = error_description || error;
     console.error('Instagram OAuth error from Meta:', msg);
@@ -59,11 +54,6 @@ router.get('/callback', async (req, res) => {
       },
     });
     const longLivedUserToken = llRes.data.access_token;
-    console.log('[ig-oauth] long-lived token response fields:', JSON.stringify({
-      token_type: llRes.data.token_type,
-      expires_in: llRes.data.expires_in,
-      has_token: !!llRes.data.access_token,
-    }));
 
     // Step 3 — get Facebook pages this user manages
     // Page tokens derived from a long-lived user token do not expire
@@ -71,7 +61,6 @@ router.get('/callback', async (req, res) => {
       params: { access_token: longLivedUserToken, fields: 'id,name,access_token' },
     });
     const pages = pagesRes.data.data || [];
-    console.log('[ig-oauth] pages response:', JSON.stringify(pagesRes.data));
 
     if (!pages.length) {
       return res.redirect('/settings?ig_error=No+Facebook+pages+found.+Make+sure+you+are+a+Page+admin.');
@@ -87,7 +76,6 @@ router.get('/callback', async (req, res) => {
             access_token: page.access_token,
           },
         });
-        console.log(`[ig-oauth] page ${page.id} IG response:`, JSON.stringify(igRes.data));
         const ig = igRes.data.instagram_business_account;
         if (ig) {
           igAccounts.push({

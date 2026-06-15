@@ -13,21 +13,25 @@ async function uploadImageToWordPress(img) {
   const filename = img.filename ? img.filename.replace(/\.[^.]+$/, '.jpg') : 'instagram.jpg';
   const auth = Buffer.from(`${creds.username}:${creds.appPassword}`).toString('base64');
 
-  const res = await axios.post(
-    `${config.wordpress.siteUrl}/wp-json/wp/v2/media`,
-    imageBuffer,
-    {
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'image/jpeg',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-      },
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity,
-    }
-  );
-
-  return res.data.source_url;
+  try {
+    const res = await axios.post(
+      `${config.wordpress.siteUrl}/wp-json/wp/v2/media`,
+      imageBuffer,
+      {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'image/jpeg',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      }
+    );
+    return res.data.source_url;
+  } catch (err) {
+    const detail = err.response?.data?.message || err.response?.data?.code || err.message;
+    throw new Error(`WordPress image upload failed: ${detail}`);
+  }
 }
 
 async function publishToInstagram(item) {
@@ -49,18 +53,30 @@ async function publishToInstagram(item) {
   }
 
   // Step 1: create media container
-  const containerRes = await axios.post(`${GRAPH}/${accountId}/media`, {
-    image_url: imageUrl,
-    caption: item.instagram_caption,
-    cross_post_to_facebook_page: true,
-    access_token: token,
-  });
+  let containerRes;
+  try {
+    containerRes = await axios.post(`${GRAPH}/${accountId}/media`, {
+      image_url: imageUrl,
+      caption: item.instagram_caption,
+      cross_post_to_facebook_page: true,
+      access_token: token,
+    });
+  } catch (err) {
+    const detail = err.response?.data?.error?.message || err.message;
+    throw new Error(`Instagram media container failed: ${detail}`);
+  }
 
   // Step 2: publish the container
-  const publishRes = await axios.post(`${GRAPH}/${accountId}/media_publish`, {
-    creation_id: containerRes.data.id,
-    access_token: token,
-  });
+  let publishRes;
+  try {
+    publishRes = await axios.post(`${GRAPH}/${accountId}/media_publish`, {
+      creation_id: containerRes.data.id,
+      access_token: token,
+    });
+  } catch (err) {
+    const detail = err.response?.data?.error?.message || err.message;
+    throw new Error(`Instagram publish failed: ${detail}`);
+  }
 
   return { instagramPostId: publishRes.data.id };
 }
