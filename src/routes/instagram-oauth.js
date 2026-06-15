@@ -19,6 +19,11 @@ const SCOPES = [
 router.get('/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
+  console.log('[ig-oauth] callback hit — session ID:', req.sessionID);
+  console.log('[ig-oauth] incoming state:', state);
+  console.log('[ig-oauth] stored session state:', req.session.instagramOAuthState);
+  console.log('[ig-oauth] session contents:', JSON.stringify(req.session));
+
   if (error) {
     const msg = error_description || error;
     console.error('Instagram OAuth error from Meta:', msg);
@@ -28,6 +33,7 @@ router.get('/callback', async (req, res) => {
   const storedState = req.session.instagramOAuthState;
   delete req.session.instagramOAuthState;
   if (!state || state !== storedState) {
+    console.error('[ig-oauth] state mismatch — incoming:', state, '| stored:', storedState, '| session ID:', req.sessionID);
     return res.redirect('/settings?ig_error=Invalid+state+parameter');
   }
 
