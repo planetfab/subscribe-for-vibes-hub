@@ -10,6 +10,7 @@ let lightboxImages = [];
 let lightboxIdx = 0;
 let editImages = [];
 let quill = null;
+let quillBlurb = null;
 
 /* ── Bootstrap ──────────────────────────────────────────────────────────── */
 
@@ -119,8 +120,8 @@ async function copyField(btn, id, field) {
   const item = allItems.find(i => i.id === id);
   if (!item) return;
   let text = item[field] || '';
-  // Blog post is stored as Quill HTML — strip tags for plain-text clipboard
-  if (field === 'blog_post') text = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  // These fields are stored as Quill HTML — strip tags for plain-text clipboard
+  if (field === 'blog_post' || field === 'newsletter_blurb') text = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
@@ -137,6 +138,8 @@ async function copyModalField(btn, elementId) {
   let text = '';
   if (elementId === 'quillEditor') {
     text = quill ? quill.root.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  } else if (elementId === 'quillNewsletterBlurb') {
+    text = quillBlurb ? quillBlurb.root.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
   } else {
     const el = document.getElementById(elementId);
     if (!el) return;
@@ -477,7 +480,28 @@ function openEdit(id) {
   document.getElementById('editId').value = id;
   document.getElementById('editPieceTitle').value = item.piece_title || '';
   document.getElementById('editSectionName').value = item.section_name || '';
-  document.getElementById('editNewsletterBlurb').value = item.newsletter_blurb || '';
+  if (!quillBlurb) {
+    quillBlurb = new Quill('#quillNewsletterBlurb', {
+      theme: 'snow',
+      modules: {
+        toolbar: [
+          ['bold', 'italic', 'underline'],
+          ['link'],
+          ['clean'],
+        ],
+      },
+    });
+    quillBlurb.on('text-change', updateBlurbCount);
+  }
+  const nb = item.newsletter_blurb || '';
+  if (nb.trimStart().startsWith('<')) {
+    quillBlurb.clipboard.dangerouslyPasteHTML(nb);
+  } else if (nb) {
+    const html = nb.split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+    quillBlurb.clipboard.dangerouslyPasteHTML(html);
+  } else {
+    quillBlurb.setContents([]);
+  }
   document.getElementById('editLinkedinHook').value = item.linkedin_hook || '';
   document.getElementById('editInstagramCaption').value = item.instagram_caption || '';
   document.getElementById('editMetaDescription').value = item.meta_description || '';
@@ -556,15 +580,12 @@ function closeModal() {
 }
 
 function updateBlurbCount() {
-  const ta = document.getElementById('editNewsletterBlurb');
   const hint = document.getElementById('blurbCount');
-  if (!ta || !hint) return;
-  const words = ta.value.trim().split(/\s+/).filter(Boolean).length;
+  if (!hint || !quillBlurb) return;
+  const words = quillBlurb.getText().trim().split(/\s+/).filter(Boolean).length;
   hint.textContent = `${words}/750 words`;
   hint.style.color = words > 750 ? '#c0392b' : 'var(--ink-muted)';
 }
-
-document.getElementById('editNewsletterBlurb')?.addEventListener('input', updateBlurbCount);
 
 function updateMetaDescCount() {
   const input = document.getElementById('editMetaDescription');
@@ -581,10 +602,11 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('editId').value;
   const rawBlogPostHtml = quill ? quill.root.innerHTML : '';
+  const rawBlurbHtml = quillBlurb ? quillBlurb.root.innerHTML : '';
   const payload = {
     piece_title: document.getElementById('editPieceTitle').value,
     section_name: document.getElementById('editSectionName').value,
-    newsletter_blurb: document.getElementById('editNewsletterBlurb').value,
+    newsletter_blurb: rawBlurbHtml === '<p><br></p>' ? '' : rawBlurbHtml,
     linkedin_hook: document.getElementById('editLinkedinHook').value,
     instagram_caption: document.getElementById('editInstagramCaption').value,
     meta_description: document.getElementById('editMetaDescription').value,
@@ -683,8 +705,12 @@ async function enrichCard() {
       showToast('Researching — please wait, this may take up to a minute');
       try {
         const enriched = await apiFetch(`/api/content/${id}/enrich`, { method: 'POST' });
-        if (enriched.newsletter_blurb) {
-          document.getElementById('editNewsletterBlurb').value = enriched.newsletter_blurb;
+        if (enriched.newsletter_blurb && quillBlurb) {
+          const nb = enriched.newsletter_blurb;
+          const html = nb.trimStart().startsWith('<')
+            ? nb
+            : nb.split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+          quillBlurb.clipboard.dangerouslyPasteHTML(html);
           updateBlurbCount();
         }
         if (enriched.linkedin_hook)       document.getElementById('editLinkedinHook').value       = enriched.linkedin_hook;
