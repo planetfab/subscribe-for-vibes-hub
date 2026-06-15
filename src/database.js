@@ -228,7 +228,7 @@ async function deleteMany(ids) {
 
 // ── Trash operations ─────────────────────────────────────────────────────────
 
-const TRASH_TTL_DAYS = 5;
+const TRASH_TTL_DAYS = 60;
 
 function trashCutoff() {
   return new Date(Date.now() - TRASH_TTL_DAYS * 24 * 60 * 60 * 1000);

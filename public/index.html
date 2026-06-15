@@ -43,8 +43,8 @@
     <button class="filter-btn" onclick="setFilter('Approved', this)">Approved <span class="filter-count" id="count-Approved"></span></button>
     <button class="filter-btn" onclick="setFilter('Published', this)">Published <span class="filter-count" id="count-Published"></span></button>
     <button class="filter-btn" onclick="setFilter('Newsletter Ready', this)">Newsletter Ready <span class="filter-count" id="count-Newsletter Ready"></span></button>
-    <button class="filter-btn filter-btn-trash" onclick="setFilter('trash', this)">Trash <span class="filter-count" id="count-trash"></span></button>
-    <button class="btn btn-ghost btn-sm" id="emptyTrashBtn" style="display:none" onclick="confirmEmptyTrash()">Empty Trash</button>
+    <button class="filter-btn filter-btn-trash" onclick="setFilter('archive', this)">Archive <span class="filter-count" id="count-archive"></span></button>
+    <button class="btn btn-ghost btn-sm" id="emptyTrashBtn" style="display:none" onclick="confirmEmptyTrash()">Empty Archive</button>
   </div>
 
   <!-- Bulk mode: actions bar (hidden by default) -->
@@ -76,10 +76,10 @@
             <div id="quillNewsletterBlurb"></div>
           </div>
         </div>
-        <div class="field"><label>LinkedIn Post <button type="button" class="copy-btn" data-copy-field="editLinkedinHook" title="Copy to clipboard"></button></label><textarea id="editLinkedinHook" rows="6"></textarea></div>
-        <div class="field"><label>Instagram Caption <button type="button" class="copy-btn" data-copy-field="editInstagramCaption" title="Copy to clipboard"></button></label><textarea id="editInstagramCaption" rows="3"></textarea></div>
+        <div class="field"><label>LinkedIn Post <span class="field-hint" id="linkedinCount"></span><button type="button" class="copy-btn" data-copy-field="editLinkedinHook" title="Copy to clipboard"></button></label><textarea id="editLinkedinHook" rows="6"></textarea></div>
+        <div class="field"><label>Instagram Caption <span class="field-hint" id="instagramCount"></span><button type="button" class="copy-btn" data-copy-field="editInstagramCaption" title="Copy to clipboard"></button></label><textarea id="editInstagramCaption" rows="3"></textarea></div>
         <div class="field">
-          <label>Blog Post (full article) <span class="field-hint">600–800 words · edit formatting below · saved to WordPress on publish</span><button type="button" class="copy-btn" data-copy-field="quillEditor" title="Copy to clipboard"></button></label>
+          <label>Blog Post (full article) <span class="field-hint">600–800 words · edit formatting below · saved to WordPress on publish</span> <span class="field-hint" id="blogPostCount"></span><button type="button" class="copy-btn" data-copy-field="quillEditor" title="Copy to clipboard"></button></label>
           <button type="button" class="btn btn-ghost btn-sm enrich-btn" id="enrichBtn" onclick="enrichCard()">Research &amp; Enrich</button>
           <div class="quill-wrap">
             <div id="quillEditor"></div>

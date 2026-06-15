@@ -45,7 +45,7 @@ async function loadStats() {
 }
 
 function updateCounts() {
-  const counts = { all: allItems.length, trash: trashItems.length };
+  const counts = { all: allItems.length, archive: trashItems.length };
   for (const item of allItems) {
     counts[item.status] = (counts[item.status] || 0) + 1;
   }
@@ -63,7 +63,7 @@ function setFilter(filter, btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const emptyBtn = document.getElementById('emptyTrashBtn');
-  if (filter === 'trash') {
+  if (filter === 'archive') {
     emptyBtn.style.display = '';
     loadTrash();
   } else {
@@ -77,11 +77,11 @@ function setFilter(filter, btn) {
 function renderCards() {
   const grid = document.getElementById('cardsGrid');
 
-  if (currentFilter === 'trash') {
+  if (currentFilter === 'archive') {
     if (!trashItems.length) {
       grid.innerHTML = `<div class="empty-state">
-        <h3>Trash is empty</h3>
-        <p>Deleted cards appear here for 5 days before being permanently removed.</p>
+        <h3>Archive is empty</h3>
+        <p>Archived cards appear here for 60 days before being permanently removed.</p>
       </div>`;
     } else {
       grid.innerHTML = trashItems.map(trashCardHTML).join('');
@@ -267,13 +267,13 @@ async function loadTrash() {
     updateCounts();
     renderCards();
   } catch (err) {
-    showToast('Failed to load trash', true);
+    showToast('Failed to load archive', true);
   }
 }
 
 function trashCardHTML(item) {
   const deletedAt = item.deleted_at ? new Date(item.deleted_at) : null;
-  const purgeAt = deletedAt ? new Date(deletedAt.getTime() + 5 * 24 * 60 * 60 * 1000) : null;
+  const purgeAt = deletedAt ? new Date(deletedAt.getTime() + 60 * 24 * 60 * 60 * 1000) : null;
   const msLeft = purgeAt ? purgeAt - Date.now() : null;
   const daysLeft = msLeft ? Math.ceil(msLeft / (1000 * 60 * 60 * 24)) : null;
   const purgeNote = daysLeft > 0
@@ -286,11 +286,11 @@ function trashCardHTML(item) {
 <div class="card card-trash" id="card-${item.id}">
   <div class="card-header">
     <h3 class="card-title">${esc(item.piece_title || 'Untitled')}</h3>
-    <span class="status-badge status-draft">Deleted</span>
+    <span class="status-badge status-draft">Archived</span>
   </div>
   ${item.section_name ? `<div class="section-tag">${esc(item.section_name)}</div>` : ''}
   <p class="card-blurb">${esc(blurb)}${blurbTrunc ? '&hellip;' : ''}</p>
-  ${deletedAt ? `<div class="card-date">Deleted ${formatDate(item.deleted_at)} &middot; ${purgeNote}</div>` : ''}
+  ${deletedAt ? `<div class="card-date">Archived ${formatDate(item.deleted_at)} &middot; ${purgeNote}</div>` : ''}
   <div class="card-actions">
     <button class="btn btn-approve btn-sm" onclick="restoreItem('${item.id}')">Restore</button>
     <button class="btn btn-danger btn-sm" onclick="permanentDeleteConfirm('${item.id}')">Delete Forever</button>
@@ -352,7 +352,7 @@ function updateBulkBar() {
   document.getElementById('bulkCount').textContent = `${n} selected`;
   const btn = document.getElementById('bulkDeleteBtn');
   btn.disabled = n === 0;
-  btn.textContent = n > 0 ? `Delete ${n} Item${n !== 1 ? 's' : ''}` : 'Delete Selected';
+  btn.textContent = n > 0 ? `Archive ${n} Item${n !== 1 ? 's' : ''}` : 'Archive Selected';
 }
 
 /* ── Delete ─────────────────────────────────────────────────────────────── */
@@ -361,16 +361,16 @@ function openDeleteConfirm(id) {
   const item = allItems.find(i => i.id === id);
   const title = item?.piece_title || 'this item';
   openConfirm(
-    'Move to Trash',
-    `Move "${title}" to Trash? You can restore it within 5 days.`,
+    'Archive',
+    `Archive "${title}"? You can restore it within 60 days.`,
     async () => {
       try {
         await apiFetch(`/api/content/${id}`, { method: 'DELETE' });
         allItems = allItems.filter(i => i.id !== id);
-        trashItems = []; // stale — will reload on next trash visit
+        trashItems = []; // stale — will reload on next archive visit
         updateCounts();
         renderCards();
-        showToast('Moved to Trash');
+        showToast('Archived');
       } catch (err) {
         showToast(err.message || 'Delete failed', true);
       }
@@ -382,19 +382,19 @@ function openBulkDeleteConfirm() {
   const n = selectedIds.size;
   if (!n) return;
   openConfirm(
-    'Move to Trash',
-    `Move ${n} item${n !== 1 ? 's' : ''} to Trash? You can restore them within 5 days.`,
+    'Archive',
+    `Archive ${n} item${n !== 1 ? 's' : ''}? You can restore them within 60 days.`,
     async () => {
       try {
         const ids = [...selectedIds];
         await apiFetch('/api/content/bulk-delete', { method: 'POST', body: { ids } });
         allItems = allItems.filter(i => !selectedIds.has(i.id));
-        trashItems = []; // stale — will reload on next trash visit
+        trashItems = []; // stale — will reload on next archive visit
         selectedIds.clear();
         updateCounts();
         renderCards();
         toggleBulkMode();
-        showToast(`Moved ${ids.length} item${ids.length !== 1 ? 's' : ''} to Trash`);
+        showToast(`Archived ${ids.length} item${ids.length !== 1 ? 's' : ''}`);
       } catch (err) {
         showToast(err.message || 'Bulk delete failed', true);
       }
@@ -440,17 +440,17 @@ function permanentDeleteConfirm(id) {
 function confirmEmptyTrash() {
   if (!trashItems.length) return;
   openConfirm(
-    'Empty Trash',
-    `Permanently delete all ${trashItems.length} item${trashItems.length !== 1 ? 's' : ''} in Trash? This cannot be undone.`,
+    'Empty Archive',
+    `Permanently delete all ${trashItems.length} item${trashItems.length !== 1 ? 's' : ''} in Archive? This cannot be undone.`,
     async () => {
       try {
         await apiFetch('/api/content/trash', { method: 'DELETE' });
         trashItems = [];
         updateCounts();
         renderCards();
-        showToast('Trash emptied');
+        showToast('Archive emptied');
       } catch (err) {
-        showToast(err.message || 'Empty trash failed', true);
+        showToast(err.message || 'Empty archive failed', true);
       }
     }
   );
@@ -513,6 +513,9 @@ function openEdit(id) {
   renderEditImages();
   updateBlurbCount();
   updateMetaDescCount();
+  updateLinkedinCount();
+  updateInstagramCount();
+  updateBlogPostCount();
   document.getElementById('editModal').style.display = 'flex';
 
   // Initialize Quill once; on subsequent openEdit calls just update its content
@@ -528,6 +531,7 @@ function openEdit(id) {
         ],
       },
     });
+    quill.on('text-change', updateBlogPostCount);
   }
   const blogPost = item.blog_post || '';
   if (blogPost.trimStart().startsWith('<')) {
@@ -595,7 +599,35 @@ function updateMetaDescCount() {
   hint.textContent = `${len}/160`;
   hint.style.color = len > 160 ? '#c0392b' : len >= 150 ? '#27ae60' : 'var(--ink-muted)';
 }
+
+function updateLinkedinCount() {
+  const ta = document.getElementById('editLinkedinHook');
+  const hint = document.getElementById('linkedinCount');
+  if (!ta || !hint) return;
+  const words = ta.value.trim().split(/\s+/).filter(Boolean).length;
+  hint.textContent = `${words}/250 words`;
+  hint.style.color = words > 250 ? '#c0392b' : 'var(--ink-muted)';
+}
+
+function updateInstagramCount() {
+  const ta = document.getElementById('editInstagramCaption');
+  const hint = document.getElementById('instagramCount');
+  if (!ta || !hint) return;
+  const words = ta.value.trim().split(/\s+/).filter(Boolean).length;
+  hint.textContent = `${words}/125 words`;
+  hint.style.color = words > 125 ? '#c0392b' : 'var(--ink-muted)';
+}
+
+function updateBlogPostCount() {
+  const hint = document.getElementById('blogPostCount');
+  if (!hint || !quill) return;
+  const words = quill.getText().trim().split(/\s+/).filter(Boolean).length;
+  hint.textContent = `${words}/800 words`;
+  hint.style.color = words > 800 ? '#c0392b' : 'var(--ink-muted)';
+}
 document.getElementById('editMetaDescription')?.addEventListener('input', updateMetaDescCount);
+document.getElementById('editLinkedinHook')?.addEventListener('input', updateLinkedinCount);
+document.getElementById('editInstagramCaption')?.addEventListener('input', updateInstagramCount);
 
 
 document.getElementById('editForm').addEventListener('submit', async (e) => {
@@ -713,8 +745,8 @@ async function enrichCard() {
           quillBlurb.clipboard.dangerouslyPasteHTML(html);
           updateBlurbCount();
         }
-        if (enriched.linkedin_hook)       document.getElementById('editLinkedinHook').value       = enriched.linkedin_hook;
-        if (enriched.instagram_caption)   document.getElementById('editInstagramCaption').value   = enriched.instagram_caption;
+        if (enriched.linkedin_hook) { document.getElementById('editLinkedinHook').value = enriched.linkedin_hook; updateLinkedinCount(); }
+        if (enriched.instagram_caption) { document.getElementById('editInstagramCaption').value = enriched.instagram_caption; updateInstagramCount(); }
         if (enriched.meta_description) {
           document.getElementById('editMetaDescription').value = enriched.meta_description;
           updateMetaDescCount();
@@ -725,6 +757,7 @@ async function enrichCard() {
             ? bp
             : bp.split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
           quill.clipboard.dangerouslyPasteHTML(html);
+          updateBlogPostCount();
         }
         showToast('Content enriched — review changes and save');
       } catch (err) {
