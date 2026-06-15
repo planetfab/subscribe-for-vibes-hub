@@ -13,6 +13,7 @@ const SCOPES = [
   'instagram_content_publish',
   'pages_show_list',
   'pages_read_engagement',
+  'pages_manage_metadata',
 ].join(',');
 
 // GET /auth/instagram/callback — registered before / so it isn't swallowed
@@ -59,6 +60,11 @@ router.get('/callback', async (req, res) => {
       },
     });
     const longLivedUserToken = llRes.data.access_token;
+    console.log('[ig-oauth] long-lived token response fields:', JSON.stringify({
+      token_type: llRes.data.token_type,
+      expires_in: llRes.data.expires_in,
+      has_token: !!llRes.data.access_token,
+    }));
 
     // Step 3 — get Facebook pages this user manages
     // Page tokens derived from a long-lived user token do not expire
