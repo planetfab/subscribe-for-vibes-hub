@@ -68,7 +68,7 @@ router.get('/instagram', async (req, res) => {
     const pendingJson = await db.getSetting('instagram_pending_accounts');
 
     const token     = dbToken     || config.meta.instagramToken     || null;
-    const accountId = dbAccountId || config.meta.instagramAccountId || null;
+    const accountId = dbAccountId || config.meta.instagramUserId    || null;
 
     const pending = pendingJson ? JSON.parse(pendingJson) : [];
 
