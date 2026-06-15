@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const config = require('./config');
 const db = require('./database');
@@ -26,6 +27,9 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(
   session({
+    store: process.env.DATABASE_URL
+      ? new pgSession({ conString: process.env.DATABASE_URL, createTableIfMissing: true })
+      : undefined,
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,
