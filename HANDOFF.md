@@ -208,7 +208,7 @@ The app creates and migrates all tables automatically at startup. Current column
 | `id` | UUID | Primary key |
 | `piece_title` | TEXT | |
 | `section_name` | TEXT | |
-| `newsletter_blurb` | TEXT | 150-word newsletter entry |
+| `newsletter_blurb` | TEXT | 150–750 word newsletter text |
 | `linkedin_hook` | TEXT | Full LinkedIn post (150–250 words + hashtags) |
 | `instagram_caption` | TEXT | |
 | `source_urls` | TEXT | Comma-separated; extracted in Node.js after signature stripping, not by Claude |
@@ -292,7 +292,7 @@ The system prompt in `src/claude.js` produces **9 output fields**:
 |---|---|
 | `section_name` | Newsletter section name |
 | `piece_title` | Headline |
-| `newsletter_blurb` | 150-word newsletter entry in Michelle's voice |
+| `newsletter_blurb` | 150–750 word newsletter text in Michelle's voice |
 | `linkedin_hook` | Complete LinkedIn post, 150–250 words + hashtags |
 | `instagram_caption` | Instagram caption |
 | `source_urls` | Populated by Node.js extraction; Claude is told to leave this empty |

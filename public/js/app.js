@@ -225,7 +225,7 @@ function cardHTML(item) {
   </div>
   ${item.section_name ? `<div class="section-tag">${esc(item.section_name)}</div>` : ''}
   <div class="card-fields">
-    ${cardField(item, 'newsletter_blurb', 'Newsletter Blurb', 200)}
+    ${cardField(item, 'newsletter_blurb', 'Newsletter Text', 200)}
     ${cardField(item, 'linkedin_hook', 'LinkedIn Post', 160)}
     ${cardField(item, 'instagram_caption', 'Instagram Caption', 120)}
     ${cardField(item, 'blog_post', 'Blog Post', 120)}
@@ -560,8 +560,8 @@ function updateBlurbCount() {
   const hint = document.getElementById('blurbCount');
   if (!ta || !hint) return;
   const words = ta.value.trim().split(/\s+/).filter(Boolean).length;
-  hint.textContent = `${words}/150 words`;
-  hint.style.color = words > 150 ? '#c0392b' : 'var(--ink-muted)';
+  hint.textContent = `${words}/750 words`;
+  hint.style.color = words > 750 ? '#c0392b' : 'var(--ink-muted)';
 }
 
 document.getElementById('editNewsletterBlurb')?.addEventListener('input', updateBlurbCount);
