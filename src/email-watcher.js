@@ -6,6 +6,17 @@ const config = require('./config');
 const { processContent } = require('./claude');
 const db = require('./database');
 
+const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+function detectImageType(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return 'image/jpeg';
+  if (buf[0] === 0x47 && buf[1] === 0x49) return 'image/gif';
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[8] === 0x57 && buf[9] === 0x45) return 'image/webp';
+  return null;
+}
+
 async function checkEmails(onProgress = () => {}) {
   if (!config.imap.password) {
     console.log('[email] IMAP_PASSWORD not configured — skipping');
@@ -96,11 +107,17 @@ async function checkEmails(onProgress = () => {}) {
           }
 
           // Extract image attachments for Claude vision
-          const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
           const MAX_STORED_IMAGES = 3;
           const images = (parsed.attachments || [])
-            .filter(a => SUPPORTED_IMAGE_TYPES.has(a.contentType?.toLowerCase()))
-            .map(a => ({ data: a.content, contentType: a.contentType.toLowerCase(), filename: a.filename || 'image' }));
+            .map(a => {
+              const detected = detectImageType(a.content);
+              const contentType = detected || a.contentType?.toLowerCase();
+              if (detected && detected !== a.contentType?.toLowerCase()) {
+                console.log(`[email] uid ${uid} — "${a.filename}": declared ${a.contentType}, detected ${detected}`);
+              }
+              return { data: a.content, contentType, filename: a.filename || 'image' };
+            })
+            .filter(a => SUPPORTED_IMAGE_TYPES.has(a.contentType));
           if (images.length > 0) {
             console.log(`[email] uid ${uid} — image attachments: ${images.map(i => `${i.filename} (${Math.round(i.data.length / 1024)}KB)`).join(', ')}`);
           }
