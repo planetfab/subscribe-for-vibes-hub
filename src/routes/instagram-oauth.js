@@ -66,6 +66,7 @@ router.get('/callback', async (req, res) => {
       params: { access_token: longLivedUserToken, fields: 'id,name,access_token' },
     });
     const pages = pagesRes.data.data || [];
+    console.log('[ig-oauth] pages response:', JSON.stringify(pagesRes.data));
 
     if (!pages.length) {
       return res.redirect('/settings?ig_error=No+Facebook+pages+found.+Make+sure+you+are+a+Page+admin.');
@@ -81,6 +82,7 @@ router.get('/callback', async (req, res) => {
             access_token: page.access_token,
           },
         });
+        console.log(`[ig-oauth] page ${page.id} IG response:`, JSON.stringify(igRes.data));
         const ig = igRes.data.instagram_business_account;
         if (ig) {
           igAccounts.push({
@@ -92,7 +94,8 @@ router.get('/callback', async (req, res) => {
           });
         }
       } catch (err) {
-        console.warn(`Skipping page ${page.id}:`, err.message);
+        const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+        console.warn(`[ig-oauth] skipping page ${page.id}:`, detail);
       }
     }
 
