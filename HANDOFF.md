@@ -5,7 +5,7 @@
 **Founders:** Fabrice Frere & Michelle Keller  
 **Live URL:** https://hub.planetfab.com  
 **GitHub:** https://github.com/planetfab/subscribe-for-vibes-hub  
-**Last updated:** June 10 2026
+**Last updated:** June 15 2026
 
 ---
 
@@ -39,7 +39,7 @@ The Make.com scenario is still running as a parallel backup and should remain ac
 | Database | PostgreSQL via Railway addon (in-memory fallback for local dev) |
 | Email | IMAP via `imapflow` + `mailparser` (Dreamhost, `buzzby@planetfab.com`) |
 | Image processing | `sharp` — cover-crop resizing for LinkedIn (1200×627) and WordPress (1536×1024) |
-| Rich text editor | Quill.js 1.3.7 (CDN) — blog post field in edit modal |
+| Rich text editor | Quill.js 1.3.7 (CDN) — blog post and newsletter text fields in edit modal |
 | Hosting | Railway (Hobby plan, auto-deploy from GitHub) |
 | Domain | `hub.planetfab.com` via Dreamhost DNS → Railway |
 | Publishing | LinkedIn UGC Posts API v2, Meta Graph API v19.0, WordPress REST API + Yoast SEO |
@@ -53,6 +53,7 @@ axios               — HTTP requests to LinkedIn / Meta / WordPress APIs
 dotenv              — Environment variable loading
 express             — Web server
 express-session     — Session-based authentication
+connect-pg-simple   — Postgres-backed session store (sessions survive deploys and restarts)
 imapflow            — IMAP email client
 mailparser          — Email parsing (MIME, attachments)
 node-cron           — Scheduled checks (8am/2pm ET) and daily trash purge
@@ -171,7 +172,7 @@ All variables must be set in Railway → Project → Service → Variables. They
 - Start command: `node src/server.js`
 - No HTTP healthcheck (removed — was timing out; Railway uses TCP port check instead)
 - SSL certificate is valid and active on `hub.planetfab.com`
-- PostgreSQL addon is active and stable; all tokens, settings, and content persist across deployments
+- PostgreSQL addon is active and stable; all tokens, settings, content, and **sessions** persist across deployments (`connect-pg-simple` stores sessions in a `session` table, created automatically on first boot)
 - DB init retries up to 4 times with 4-second delays (8s connection timeout) to survive Railway's PostgreSQL startup race
 - DB init is split into two phases: Phase 1 retries the connection with `SELECT 1`; Phase 2 runs schema migrations. Phase 2 errors are logged but do not null the pool, so a migration hiccup never silently falls back to in-memory.
 
@@ -221,7 +222,7 @@ The app creates and migrates all tables automatically at startup. Current column
 | `email_message_id` | TEXT | Originating email Message-ID (dedup fallback) |
 | `published_channels` | TEXT | JSON object mapping channel keys to ISO timestamp of publish — e.g. `{"linkedin_fabrice":"2026-06-05T…"}` |
 | `email_received_at` | TIMESTAMPTZ | Original email received date, shown on cards |
-| `deleted_at` | TIMESTAMPTZ | NULL = active; set = soft-deleted (Trash) |
+| `deleted_at` | TIMESTAMPTZ | NULL = active; set = archived (60-day retention, then permanently purged by daily cron) |
 | `created_at` | TIMESTAMPTZ | |
 | `updated_at` | TIMESTAMPTZ | |
 
@@ -258,7 +259,7 @@ Key/value store for OAuth tokens and URNs. Tokens survive deployments because DB
 7. Strip email signature: search for the two-line consecutive pattern unique to each sender (see below) and discard everything from that point onward
 8. Extract URLs in Node.js from the signature-stripped body (not by Claude). `planetfab.com` is on a denylist so own-domain signature URLs are always excluded
 9. Sanitize: remove `\n`, `\r`, `\t` (matches the Make.com Tools module formula)
-10. Extract image attachments (jpeg/png/gif/webp, max 4 MB each, max 5 for Claude, max 3 stored)
+10. Extract image attachments (jpeg/png/gif/webp, max 4 MB each, max 5 for Claude, max 3 stored). **Image format is detected from magic bytes (first bytes of the buffer), not from filename or declared content-type header** — a `.jpg` file containing PNG bytes is correctly identified as `image/png`.
 11. Send subject + body + images to Claude via the Messages API (max 5 images, base64 encoded) — **no web search tool at this stage**
 12. Parse Claude's JSON response (9 fields including `meta_description`); truncate `meta_description` to 155 chars at word boundary if over limit
 13. Override `source_urls` with the Node.js-extracted URLs (Claude's `source_urls` output is discarded)
@@ -286,7 +287,7 @@ Michelle Keller\nArt Director | PlanetFab Studio
 For HTML-only emails: `<br>` and closing block tags are converted to `\n` before stripping, ensuring the regex always has a newline to match.
 
 ### Claude system prompt
-The system prompt in `src/claude.js` produces **9 output fields**:
+The system prompt in `src/claude.js` produces **8 output fields**:
 
 | Field | Description |
 |---|---|
@@ -300,6 +301,8 @@ The system prompt in `src/claude.js` produces **9 output fields**:
 | `meta_description` | SEO summary, hard max 155 chars, enforced by `truncateMeta()` after parse |
 
 `max_tokens` is set to 4000 to accommodate the full blog post alongside the other fields.
+
+**Voice rules (June 15 2026):** The system prompt enforces several additional rules: (1) banned words — "quiet" and "quietly" are never used; alternatives: "understated," "unassuming," "subdued," "low-key," "without fanfare"; (2) em dash rules by field — no em dashes in Instagram captions, avoid in LinkedIn posts (use commas or new sentences), max one per piece in newsletter text and blog post; (3) proper name spelling — names of real people, brands, companies, and publications must be spelled exactly as commonly known; if uncertain, omit the name; (4) CTA endings — LinkedIn posts end with a varied planetfab.com CTA line followed by a fixed newsletter subscribe link; Instagram captions end with "More at the link in bio."; blog posts end with a newsletter subscribe link paragraph separated by `\n\n`.
 
 **Prompt caching (June 9 2026):** The `system` parameter is passed as an array with `cache_control: { type: "ephemeral" }` on the system prompt block. The system prompt is ~1,100 tokens and identical across every call, so cached reads save ~90% of those input tokens. Cache TTL is 5 minutes, refreshed on each hit. Both `processContent()` and `enrichContent()` use this format. Cache hits appear in the API response as `cache_read_input_tokens`.
 
@@ -404,6 +407,10 @@ Posting to a LinkedIn Organization requires the `w_organization_social` scope an
 
 **Cards without images cannot be published to Instagram** — the publisher throws a clear error before making any API call.
 
+**Error surfacing (June 15 2026):** The publisher extracts the Meta API error message from `err.response.data.error.message` before rethrowing, so users see the actual Meta error (e.g. "Invalid OAuth access token") rather than the generic axios "Request failed with status code 400".
+
+**Settings page connection status:** The settings page reads `INSTAGRAM_ACCESS_TOKEN` and `INSTAGRAM_USER_ID` from Railway env vars (via `config.meta.instagramToken` and `config.meta.instagramUserId`) and shows "Connected" when both are present — no OAuth flow required if env vars are set.
+
 **WP media library side effect:** each Instagram publish uploads one image to the WordPress media library as an orphaned attachment (no post parent). It does not affect the blog or any front-end pages but will accumulate in the media library over time.
 
 ### Token lifetime
@@ -417,7 +424,7 @@ The Meta app (`962437633354825`) is in **Live mode**. Instagram publishing is fu
 ## Dashboard Features
 
 ### Content cards
-Each card displays all content fields with labeled rows: Newsletter Blurb, LinkedIn Post, Instagram Caption, Blog Post, Blog Potential, and Source URLs. Each field label has a **copy-to-clipboard button** (always visible for mobile compatibility). Blog Post HTML is stripped to plain text before copying.
+Each card displays all content fields with labeled rows: Newsletter Text, LinkedIn Post, Instagram Caption, Blog Post, and Source URLs. Each field label has a **copy-to-clipboard button** (always visible for mobile compatibility). Blog Post and Newsletter Text HTML is stripped to plain text before copying.
 
 Below each card: the original **email received date** (subtle, shown when available).
 
@@ -433,11 +440,10 @@ Once a card is Published or Newsletter Ready, all channel buttons remain active.
 |---|---|---|
 | Piece Title | text input | |
 | Section Name | text input | |
-| Newsletter Blurb | textarea | Live word count (target: 150 words) |
-| LinkedIn Post | textarea | |
-| Instagram Caption | textarea | |
-| Blog Potential | textarea | Auto-grows; Yes/No + expansion notes |
-| Blog Post | Quill rich text | Bold, italic, underline, H2/H3, links. `<em>` for work titles. Saves as HTML. |
+| Newsletter Text | Quill rich text | Bold, italic, underline, links. Saves as HTML. Live word count (X/750 words; red over 750) |
+| LinkedIn Post | textarea | Live word count (X/250 words; red over 250) |
+| Instagram Caption | textarea | Live word count (X/125 words; red over 125) |
+| Blog Post | Quill rich text | Bold, italic, underline, H2/H3, links. `<em>` for work titles. Saves as HTML. Live word count (X/800 words; red over 800) |
 | Meta Description | text input | Live X/160 character counter; green at 150–160, red over 160 |
 | Source URLs | textarea | Comma-separated; pre-filled by Node.js extraction |
 | Status | select | Draft / Approved / Published / Newsletter Ready |
@@ -452,11 +458,11 @@ Each channel button shows a **green ✓ checkmark** once published to that chann
 ### Est. API cost display
 Header shows "Est. API cost this month: $X.XX" — calculated as card count × $0.10. Hidden on mobile.
 
-### Deleting and Trash
-- **Single**: card moves to Trash (soft-delete: `deleted_at` set)
-- **Bulk**: Select mode → checkboxes → Delete N Items
-- **Trash**: filter tab showing deleted cards with 5-day countdown. Restore or Delete Forever.
-- **Auto-purge**: daily cron at 3 am purges items older than 5 days.
+### Archiving
+- **Single**: Archive button moves card to Archive (soft-delete: `deleted_at` set)
+- **Bulk**: Select mode → checkboxes → Archive N Items
+- **Archive**: filter tab showing archived cards with 60-day countdown. Restore or Delete Forever.
+- **Auto-purge**: daily cron at 3 am purges items older than 60 days.
 
 ### Publishing buttons (per card)
 | Button | Destination | Requires |
