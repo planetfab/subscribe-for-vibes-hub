@@ -6,7 +6,7 @@ const { enrichContent } = require('../claude');
 
 const EDITABLE_FIELDS = [
   'piece_title', 'section_name', 'newsletter_blurb',
-  'linkedin_hook', 'instagram_caption',
+  'linkedin_hook', 'instagram_caption', 'blog_post',
   'source_urls', 'status', 'meta_description',
 ];
 
