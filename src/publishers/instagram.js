@@ -66,11 +66,26 @@ async function publishToInstagram(item) {
     throw new Error(`Instagram media container failed: ${detail}`);
   }
 
+  // Step 1.5: wait for container to be ready (Instagram processes asynchronously)
+  const containerId = containerRes.data.id;
+  const MAX_POLLS = 10;
+  const POLL_INTERVAL_MS = 3000;
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    const statusRes = await axios.get(`${GRAPH}/${containerId}`, {
+      params: { fields: 'status_code', access_token: token },
+    });
+    const statusCode = statusRes.data.status_code;
+    if (statusCode === 'FINISHED') break;
+    if (statusCode === 'ERROR') throw new Error('Instagram media container processing failed');
+    if (i === MAX_POLLS - 1) throw new Error('Instagram media container timed out after 30 seconds');
+  }
+
   // Step 2: publish the container
   let publishRes;
   try {
     publishRes = await axios.post(`${GRAPH}/${accountId}/media_publish`, {
-      creation_id: containerRes.data.id,
+      creation_id: containerId,
       access_token: token,
     });
   } catch (err) {
