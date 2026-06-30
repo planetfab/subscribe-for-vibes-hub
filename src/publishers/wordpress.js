@@ -19,7 +19,12 @@ function buildPostContent(blurb, inlineImages) {
     .split(/\n{2,}/)
     .map(p => p.trim())
     .filter(Boolean)
-    .map(p => `<!-- wp:paragraph -->\n<p>${p.replace(/\n/g, '<br>')}</p>\n<!-- /wp:paragraph -->`);
+    .map(p => {
+      if (/^<[a-z]/i.test(p) && p.endsWith('>')) {
+        return `<!-- wp:html -->\n${p}\n<!-- /wp:html -->`;
+      }
+      return `<!-- wp:paragraph -->\n<p>${p.replace(/\n/g, '<br>')}</p>\n<!-- /wp:paragraph -->`;
+    });
 
   if (!inlineImages.length) {
     return paragraphs.join('\n\n') || '';
