@@ -540,12 +540,11 @@ function openEdit(id) {
   } else {
     quillBlurb.setContents([]);
   }
-  document.getElementById('editLinkedinHook').value = item.linkedin_hook || '';
-  document.getElementById('editInstagramCaption').value = item.instagram_caption || '';
+  setTextareaValue(document.getElementById('editLinkedinHook'), item.linkedin_hook || '');
+  setTextareaValue(document.getElementById('editInstagramCaption'), item.instagram_caption || '');
   document.getElementById('editMetaDescription').value = item.meta_description || '';
-  document.getElementById('editSourceUrls').value = item.source_urls || '';
+  setTextareaValue(document.getElementById('editSourceUrls'), item.source_urls || '');
   document.getElementById('editStatus').value = item.status || 'Draft';
-  document.querySelectorAll('#editForm textarea').forEach(autoResizeTextarea);
   editImages = [...(item.images || [])];
   // Reset file input so the same file can be re-selected after a removal
   document.getElementById('imageFileInput').value = '';
@@ -556,6 +555,9 @@ function openEdit(id) {
   updateInstagramCount();
   updateBlogPostCount();
   document.getElementById('editModal').style.display = 'flex';
+  // scrollHeight reads as 0 while the modal is display:none, so the value-time
+  // resize calls above are no-ops — re-run now that the modal is actually laid out
+  document.querySelectorAll('#editForm textarea').forEach(autoResizeTextarea);
 
   // Initialize Quill once; on subsequent openEdit calls just update its content
   if (!quill) {
@@ -631,6 +633,16 @@ function autoResizeTextarea(ta) {
   if (!ta) return;
   ta.style.height = 'auto';
   ta.style.height = Math.max(TEXTAREA_MIN_HEIGHT, ta.scrollHeight) + 'px';
+}
+
+// Sets a textarea's value programmatically and resizes it immediately after —
+// .value assignment never fires 'input', so callers can't rely on the input
+// listener alone. (Still a no-op if the element is display:none at call time;
+// callers must also re-run autoResizeTextarea once the modal is visible.)
+function setTextareaValue(ta, value) {
+  if (!ta) return;
+  ta.value = value;
+  autoResizeTextarea(ta);
 }
 
 function setupAutoResizeTextareas() {
