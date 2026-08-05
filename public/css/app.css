@@ -568,16 +568,19 @@ body.bulk-mode .card-header { padding-left: 26px; }
   margin-top: 1px;
 }
 
-/* Card Delete button matches the Edit button's ghost style, not the solid
-   .btn-danger fill used elsewhere (confirm modal, bulk bar, trash) */
+/* Card Delete button rests in the Edit button's ghost style (not the solid
+   .btn-danger fill used elsewhere — confirm modal, bulk bar, trash) but
+   still warns red on hover, with white text so it stays legible */
 .card-actions-delete .btn-danger {
   background: transparent;
   color: var(--ink-mid);
   border-color: var(--border);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .card-actions-delete .btn-danger:hover:not(:disabled) {
-  border-color: var(--ink);
-  color: var(--ink);
+  background: #c0392b;
+  border-color: #c0392b;
+  color: #ffffff;
 }
 
 /* Green checkmark shown on buttons for already-published channels */
