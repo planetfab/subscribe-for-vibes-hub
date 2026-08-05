@@ -113,7 +113,7 @@ body {
   border-color: var(--border-dark);
 }
 
-.field textarea { resize: vertical; min-height: 72px; max-width: 100%; }
+.field textarea { resize: vertical; min-height: 80px; max-width: 100%; overflow-y: hidden; }
 
 /* Blog Potential auto-grows to fit its content */
 #editBlogPotential {
@@ -200,7 +200,7 @@ body {
 /* ── App header ─────────────────────────────────────────────────────────── */
 
 .app-header {
-  background: var(--surface);
+  background: #dbfa14;
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
   height: 50px;
@@ -228,11 +228,9 @@ body {
   overflow: hidden;
 }
 
-.header-wordmark {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  color: var(--ink-muted);
+.header-logo {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
 }
 
@@ -240,6 +238,7 @@ body {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: #000000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -255,17 +254,29 @@ body {
 
 .header-user {
   font-size: 11px;
-  color: var(--ink-muted);
+  color: #000000;
   text-transform: capitalize;
   margin-right: 4px;
 }
 
 .cost-display {
   font-size: 9px;
-  color: var(--ink-faint);
+  color: rgba(0, 0, 0, 0.55);
   white-space: nowrap;
   letter-spacing: 0.02em;
   line-height: 1.2;
+}
+
+/* Nav buttons in the header stay solid white against the yellow header background */
+.header-actions .btn {
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+}
+.header-actions .btn:hover:not(:disabled) {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
 }
 
 /* ── Filters ────────────────────────────────────────────────────────────── */
@@ -396,7 +407,7 @@ body.bulk-mode .card-header { padding-left: 26px; }
 }
 
 .card-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.01em;
@@ -416,8 +427,8 @@ body.bulk-mode .card-header { padding-left: 26px; }
   letter-spacing: 0.1em;
 }
 
-.status-draft        { border: 1px solid var(--border); color: var(--ink-muted); }
-.status-approved     { background: var(--ink); color: #fff; }
+.status-draft        { background: #E8E6E2; color: #6B6560; border: none; }
+.status-approved     { background: #dbfa14; color: #000000; border: none; }
 .status-published    { border: 1px solid var(--ink); color: var(--ink); }
 .status-newsletter   { border: 1px solid var(--ink); color: var(--ink); font-style: italic; }
 
@@ -457,7 +468,7 @@ body.bulk-mode .card-header { padding-left: 26px; }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--ink-faint);
+  color: #888888;
   flex: 1;
 }
 
@@ -484,7 +495,7 @@ body.bulk-mode .card-header { padding-left: 26px; }
   line-height: 1;
 }
 
-.copy-btn:hover { color: var(--ink-mid); }
+.copy-btn:hover { color: #dbfa14; }
 
 /* In modal field labels, push the copy button to the far right */
 .field label .copy-btn {
@@ -804,6 +815,7 @@ body.bulk-mode .card-actions { display: none; }
 }
 .img-caption-input::placeholder { color: var(--ink-faint); }
 .img-caption-input:focus { outline: none; border-color: var(--ink-muted); color: var(--ink); }
+.img-credit-input { margin-top: 3px; }
 
 /* Reuse .card-thumb sizing — the same 80×64 box */
 .edit-thumb-wrap .card-thumb {
@@ -957,6 +969,15 @@ body.bulk-mode .card-actions { display: none; }
   display: flex;
   gap: 6px;
   overflow: hidden;
+  align-items: flex-start;
+}
+
+.card-image-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 80px;
+  flex-shrink: 0;
 }
 
 .card-thumb {
@@ -971,6 +992,21 @@ body.bulk-mode .card-actions { display: none; }
 }
 
 .card-thumb:hover { opacity: 0.78; }
+
+.card-img-caption {
+  font-size: 9px;
+  font-style: italic;
+  color: var(--ink-mid);
+  line-height: 1.3;
+  overflow-wrap: break-word;
+}
+
+.card-img-credit {
+  font-size: 8px;
+  color: var(--ink-faint);
+  line-height: 1.3;
+  overflow-wrap: break-word;
+}
 
 /* ── Lightbox ────────────────────────────────────────────────────────────── */
 

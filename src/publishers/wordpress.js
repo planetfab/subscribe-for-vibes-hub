@@ -104,7 +104,9 @@ async function saveToWordPress(item, author = 'fabrice') {
       );
 
       const mediaId = mediaRes.data.id;
-      const caption = img.caption || '';
+      // credit (photo credit) is what's shown as the WP figcaption; caption (the
+      // descriptive line) falls back for images saved before the two fields split
+      const caption = img.credit || img.caption || '';
 
       // Set the caption on the WP media object so it appears in the media library
       // and in theme templates that render the featured image caption.

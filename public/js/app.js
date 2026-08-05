@@ -116,15 +116,43 @@ function copyBtn(id, field) {
   return `<button type="button" class="copy-btn" onclick="copyField(this,'${id}','${field}')" title="Copy">${COPY_ICON}${CHECK_ICON}</button>`;
 }
 
+// Wraps plain text (with \n\n paragraph breaks) into basic paragraph HTML,
+// escaping it first so it's safe to place in a text/html clipboard payload.
+function plainToHtml(text) {
+  return text.split(/\n{2,}/).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
+}
+
+// Writes both text/html and text/plain to the clipboard via the Clipboard API
+// so pasting into WordPress, Google Docs, or Squarespace preserves formatting.
+// Falls back to plain-text-only copy if ClipboardItem isn't supported or is rejected.
+async function writeRichClipboard(html, plain) {
+  if (window.ClipboardItem && navigator.clipboard?.write) {
+    try {
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      });
+      await navigator.clipboard.write([item]);
+      return;
+    } catch {
+      // fall through to plain text
+    }
+  }
+  await navigator.clipboard.writeText(plain);
+}
+
 async function copyField(btn, id, field) {
   const item = allItems.find(i => i.id === id);
   if (!item) return;
-  let text = item[field] || '';
-  // These fields are stored as Quill HTML — strip tags for plain-text clipboard
-  if (field === 'blog_post' || field === 'newsletter_blurb') text = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  if (!text) return;
+  const raw = item[field] || '';
+  if (!raw) return;
+  // blog_post and newsletter_blurb are stored as Quill HTML — copy the markup directly
+  const isHtmlField = field === 'blog_post' || field === 'newsletter_blurb';
+  const html = isHtmlField ? raw : plainToHtml(raw);
+  const plain = isHtmlField ? raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : raw;
+  if (!plain) return;
   try {
-    await navigator.clipboard.writeText(text);
+    await writeRichClipboard(html, plain);
     btn.classList.add('copied');
     setTimeout(() => btn.classList.remove('copied'), 2000);
   } catch {
@@ -133,21 +161,23 @@ async function copyField(btn, id, field) {
 }
 
 // Copies the current live value of a modal field (reads DOM, not allItems).
-// elementId 'quillEditor' is the special case for the Quill rich-text field.
+// elementId 'quillEditor'/'quillNewsletterBlurb' are the Quill rich-text fields.
 async function copyModalField(btn, elementId) {
-  let text = '';
-  if (elementId === 'quillEditor') {
-    text = quill ? quill.root.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
-  } else if (elementId === 'quillNewsletterBlurb') {
-    text = quillBlurb ? quillBlurb.root.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  let html = '', plain = '';
+  if (elementId === 'quillEditor' || elementId === 'quillNewsletterBlurb') {
+    const q = elementId === 'quillEditor' ? quill : quillBlurb;
+    if (!q) return;
+    html = q.root.innerHTML;
+    plain = q.getText().trim();
   } else {
     const el = document.getElementById(elementId);
     if (!el) return;
-    text = el.value || '';
+    plain = el.value || '';
+    html = plainToHtml(plain);
   }
-  if (!text) return;
+  if (!plain) return;
   try {
-    await navigator.clipboard.writeText(text);
+    await writeRichClipboard(html, plain);
     btn.classList.add('copied');
     setTimeout(() => btn.classList.remove('copied'), 2000);
   } catch {
@@ -234,7 +264,12 @@ function cardHTML(item) {
     ${cardField(item, 'blog_post', 'Blog Post', 120)}
     ${sourceField}
   </div>
-  ${item.images?.length ? `<div class="card-images">${item.images.map((img, i) => `<img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}" onclick="openLightbox('${id}',${i})">`).join('')}</div>` : ''}
+  ${item.images?.length ? `<div class="card-images">${item.images.map((img, i) => `
+  <div class="card-image-wrap">
+    <img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}" onclick="openLightbox('${id}',${i})">
+    ${img.caption ? `<div class="card-img-caption">${esc(img.caption)}</div>` : ''}
+    ${img.credit ? `<div class="card-img-credit">${esc(img.credit)}</div>` : ''}
+  </div>`).join('')}</div>` : ''}
   ${item.email_received_at ? `<div class="card-date card-date-email">Email received: ${formatDate(item.email_received_at)}</div>` : ''}
   ${item.created_at ? `<div class="card-date">${formatDate(item.created_at)}</div>` : ''}
   <div class="card-actions">
@@ -507,6 +542,7 @@ function openEdit(id) {
   document.getElementById('editMetaDescription').value = item.meta_description || '';
   document.getElementById('editSourceUrls').value = item.source_urls || '';
   document.getElementById('editStatus').value = item.status || 'Draft';
+  document.querySelectorAll('#editForm textarea').forEach(autoResizeTextarea);
   editImages = [...(item.images || [])];
   // Reset file input so the same file can be re-selected after a removal
   document.getElementById('imageFileInput').value = '';
@@ -559,11 +595,12 @@ function renderEditImages() {
   const thumbs = editImages.map((img, i) => `
     <div class="edit-thumb-wrap" data-idx="${i}">
       <div class="edit-thumb-img">
-        <img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}">
+        <img class="card-thumb" src="${getImageSrc(img)}" alt="${esc(img.filename || 'Image')}" onclick="openLightboxEdit(${i})">
         <span class="hero-badge">Hero</span>
         <button type="button" class="edit-thumb-remove" onclick="removeEditImage(${i})" aria-label="Remove image">&times;</button>
       </div>
-      <input type="text" class="img-caption-input" placeholder="Photo credit (optional)" value="${esc(img.caption || '')}" oninput="editImages[${i}].caption = this.value">
+      <input type="text" class="img-caption-input" placeholder="Add a caption..." value="${esc(img.caption || '')}" oninput="editImages[${i}].caption = this.value">
+      <input type="text" class="img-caption-input img-credit-input" placeholder="Photo credit..." value="${esc(img.credit || '')}" oninput="editImages[${i}].credit = this.value">
     </div>
   `).join('');
 
@@ -581,6 +618,23 @@ function removeEditImage(idx) {
 
 function closeModal() {
   document.getElementById('editModal').style.display = 'none';
+}
+
+/* ── Auto-expanding textareas ───────────────────────────────────────────── */
+
+const TEXTAREA_MIN_HEIGHT = 80;
+
+function autoResizeTextarea(ta) {
+  if (!ta) return;
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(TEXTAREA_MIN_HEIGHT, ta.scrollHeight) + 'px';
+}
+
+function setupAutoResizeTextareas() {
+  document.querySelectorAll('#editForm textarea').forEach(ta => {
+    ta.addEventListener('input', () => autoResizeTextarea(ta));
+    autoResizeTextarea(ta);
+  });
 }
 
 function updateBlurbCount() {
@@ -745,8 +799,18 @@ async function enrichCard() {
           quillBlurb.clipboard.dangerouslyPasteHTML(html);
           updateBlurbCount();
         }
-        if (enriched.linkedin_hook) { document.getElementById('editLinkedinHook').value = enriched.linkedin_hook; updateLinkedinCount(); }
-        if (enriched.instagram_caption) { document.getElementById('editInstagramCaption').value = enriched.instagram_caption; updateInstagramCount(); }
+        if (enriched.linkedin_hook) {
+          const ta = document.getElementById('editLinkedinHook');
+          ta.value = enriched.linkedin_hook;
+          updateLinkedinCount();
+          autoResizeTextarea(ta);
+        }
+        if (enriched.instagram_caption) {
+          const ta = document.getElementById('editInstagramCaption');
+          ta.value = enriched.instagram_caption;
+          updateInstagramCount();
+          autoResizeTextarea(ta);
+        }
         if (enriched.meta_description) {
           document.getElementById('editMetaDescription').value = enriched.meta_description;
           updateMetaDescCount();
@@ -1004,6 +1068,17 @@ function openLightbox(itemId, idx) {
   document.body.style.overflow = 'hidden';
 }
 
+// Opens the lightbox from a thumbnail inside the open edit modal, sourcing
+// from the modal's live (possibly unsaved) image list rather than allItems.
+function openLightboxEdit(idx) {
+  if (!editImages.length) return;
+  lightboxImages = editImages;
+  lightboxIdx = idx;
+  renderLightbox();
+  document.getElementById('lightbox').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
 function closeLightbox() {
   document.getElementById('lightbox').style.display = 'none';
   document.body.style.overflow = '';
@@ -1070,4 +1145,5 @@ document.addEventListener('keydown', e => {
 setupImageUpload();
 setupImageDrag();
 initModalCopyButtons();
+document.addEventListener('DOMContentLoaded', setupAutoResizeTextareas);
 init();
