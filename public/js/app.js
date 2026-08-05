@@ -275,7 +275,7 @@ function cardHTML(item) {
     ${isDraft ? `
     <div class="card-actions-row">
       <button class="btn btn-ghost btn-sm" onclick="openEdit('${id}')">Edit</button>
-      <button class="btn btn-approve-primary btn-sm" onclick="approve('${id}')">Approve</button>
+      <button class="btn btn-approve btn-sm" onclick="approve('${id}')">Approve</button>
     </div>` : `
     <div class="card-actions-row">
       <button class="btn btn-ghost btn-sm" onclick="openEdit('${id}')">Edit</button>

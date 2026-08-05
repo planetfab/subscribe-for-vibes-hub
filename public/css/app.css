@@ -186,14 +186,6 @@ body {
 }
 .btn-approve:hover:not(:disabled) { background: var(--ink); color: #fff; }
 
-/* Primary emphasis for the Approve action on Draft cards — solid dark fill */
-.btn-approve-primary {
-  background: var(--ink);
-  color: #fff;
-  border-color: var(--ink);
-}
-.btn-approve-primary:hover:not(:disabled) { opacity: 0.82; }
-
 .btn-sm { padding: 4px 9px; font-size: 11px; }
 
 /* ── Error ──────────────────────────────────────────────────────────────── */
@@ -574,6 +566,18 @@ body.bulk-mode .card-header { padding-left: 26px; }
   border-top: 1px solid var(--border);
   padding-top: 5px;
   margin-top: 1px;
+}
+
+/* Card Delete button matches the Edit button's ghost style, not the solid
+   .btn-danger fill used elsewhere (confirm modal, bulk bar, trash) */
+.card-actions-delete .btn-danger {
+  background: transparent;
+  color: var(--ink-mid);
+  border-color: var(--border);
+}
+.card-actions-delete .btn-danger:hover:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 /* Green checkmark shown on buttons for already-published channels */
