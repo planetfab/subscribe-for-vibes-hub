@@ -186,6 +186,14 @@ body {
 }
 .btn-approve:hover:not(:disabled) { background: var(--ink); color: #fff; }
 
+/* Primary emphasis for the Approve action on Draft cards — solid dark fill */
+.btn-approve-primary {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.btn-approve-primary:hover:not(:disabled) { opacity: 0.82; }
+
 .btn-sm { padding: 4px 9px; font-size: 11px; }
 
 /* ── Error ──────────────────────────────────────────────────────────────── */
@@ -487,15 +495,19 @@ body.bulk-mode .card-header { padding-left: 26px; }
   justify-content: center;
   background: none;
   border: none;
+  border-radius: 3px;
   padding: 2px;
   cursor: pointer;
   color: var(--ink-faint);
-  transition: color 0.12s;
+  transition: all 0.15s ease;
   flex-shrink: 0;
   line-height: 1;
 }
 
-.copy-btn:hover { color: #dbfa14; }
+.copy-btn:hover {
+  background: #dbfa14;
+  color: #1a1a1a;
+}
 
 /* In modal field labels, push the copy button to the far right */
 .field label .copy-btn {

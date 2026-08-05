@@ -232,9 +232,8 @@ function channelCheck(item, channel) {
 }
 
 function cardHTML(item) {
-  const isPublishable = item.status !== 'Draft';
+  const isDraft = item.status === 'Draft';
   function channelDis(channel) {
-    if (!isPublishable) return 'disabled title="Approve content first"';
     if (item.published_channels?.[channel]) return 'disabled title="Already published to this channel"';
     return '';
   }
@@ -273,9 +272,13 @@ function cardHTML(item) {
   ${item.email_received_at ? `<div class="card-date card-date-email">Email received: ${formatDate(item.email_received_at)}</div>` : ''}
   ${item.created_at ? `<div class="card-date">${formatDate(item.created_at)}</div>` : ''}
   <div class="card-actions">
+    ${isDraft ? `
     <div class="card-actions-row">
       <button class="btn btn-ghost btn-sm" onclick="openEdit('${id}')">Edit</button>
-      ${item.status === 'Draft' ? `<button class="btn btn-approve btn-sm" onclick="approve('${id}')">Approve</button>` : ''}
+      <button class="btn btn-approve-primary btn-sm" onclick="approve('${id}')">Approve</button>
+    </div>` : `
+    <div class="card-actions-row">
+      <button class="btn btn-ghost btn-sm" onclick="openEdit('${id}')">Edit</button>
     </div>
     <div class="card-actions-row">
       <button class="btn btn-ghost btn-sm" onclick="publishLinkedIn('${id}','fabrice')" ${channelDis('linkedin_fabrice')}>${channelCheck(item,'linkedin_fabrice')}Fabrice LI</button>
@@ -288,7 +291,7 @@ function cardHTML(item) {
     <div class="card-actions-row">
       <button class="btn btn-ghost btn-sm" onclick="publishInstagram('${id}')" ${channelDis('instagram')}>${channelCheck(item,'instagram')}Instagram</button>
       <button class="btn btn-ghost btn-sm" onclick="markNewsletter('${id}')" ${channelDis('newsletter')}>${channelCheck(item,'newsletter')}Newsletter</button>
-    </div>
+    </div>`}
     <div class="card-actions-row card-actions-delete">
       <button class="btn btn-danger btn-sm" onclick="openDeleteConfirm('${id}')">Delete</button>
     </div>
@@ -633,6 +636,9 @@ function autoResizeTextarea(ta) {
 function setupAutoResizeTextareas() {
   document.querySelectorAll('#editForm textarea').forEach(ta => {
     ta.addEventListener('input', () => autoResizeTextarea(ta));
+    // Also resize on focus — covers content that gets loaded into a field
+    // (e.g. Research & Enrich) after the modal is already open
+    ta.addEventListener('focus', () => autoResizeTextarea(ta));
     autoResizeTextarea(ta);
   });
 }
