@@ -8,6 +8,7 @@ const EDITABLE_FIELDS = [
   'piece_title', 'section_name', 'newsletter_blurb',
   'linkedin_hook', 'instagram_caption', 'blog_post',
   'source_urls', 'status', 'meta_description',
+  'focus_keyword', 'seo_title',
 ];
 
 router.get('/', async (req, res) => {

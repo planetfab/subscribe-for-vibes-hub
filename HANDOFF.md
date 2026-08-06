@@ -215,6 +215,8 @@ The app creates and migrates all tables automatically at startup. Current column
 | `source_urls` | TEXT | Comma-separated; extracted in Node.js after signature stripping, not by Claude |
 | `blog_post` | TEXT | 600–800 word article; stored as Quill HTML after first edit; `<em>` tags used for titles of published works |
 | `meta_description` | TEXT | SEO meta description, max 155 chars; sent to Yoast SEO + WP excerpt on blog publish |
+| `focus_keyword` | TEXT | 2–4 word SEO target phrase for the blog post; sent to Yoast's `yoast_wpseo_focuskw` on blog publish. Does not affect newsletter/LinkedIn/Instagram. |
+| `seo_title` | TEXT | Keyword-forward title variant for search engines, distinct from `piece_title` (which stays the literary display headline); sent to Yoast's `yoast_wpseo_title` on blog publish. |
 | `status` | TEXT | `Draft`, `Approved`, `Published`, `Newsletter Ready` |
 | `email_subject` | TEXT | |
 | `raw_content` | TEXT | Sanitized email body sent to Claude |
@@ -287,7 +289,7 @@ Michelle Keller\nArt Director | PlanetFab Studio
 For HTML-only emails: `<br>` and closing block tags are converted to `\n` before stripping, ensuring the regex always has a newline to match.
 
 ### Claude system prompt
-The system prompt in `src/claude.js` produces **8 output fields**:
+The system prompt in `src/claude.js` produces **10 output fields**:
 
 | Field | Description |
 |---|---|
@@ -297,8 +299,12 @@ The system prompt in `src/claude.js` produces **8 output fields**:
 | `linkedin_hook` | Complete LinkedIn post, 150–250 words + hashtags |
 | `instagram_caption` | Instagram caption |
 | `source_urls` | Populated by Node.js extraction; Claude is told to leave this empty |
-| `blog_post` | 600–800 word journalistic article. `<em></em>` is the only permitted HTML — used for titles of published works (books, magazines, films, exhibitions, albums, monographs) |
+| `blog_post` | 600–800 word journalistic article. Permitted HTML: `<em></em>` for titles of published works (books, magazines, films, exhibitions, albums, monographs), and `<h2></h2>` for 2–3 SEO subheadings (see below) |
 | `meta_description` | SEO summary, hard max 155 chars, enforced by `truncateMeta()` after parse |
+| `focus_keyword` | 2–4 word SEO target phrase for the blog post — the phrase a reader would realistically Google to find the piece |
+| `seo_title` | Keyword-forward title variant for search engines, distinct from `piece_title` (which stays the literary display headline) |
+
+**Blog post SEO (June 15 2026):** A `BLOG POST SEO` block in the system prompt, additive to the existing blog post and formatting rules, instructs Claude to: derive `focus_keyword`; break `blog_post` into 2–3 `<h2>` sections that read as genuine structural turns in the argument (not filler) and incorporate the keyword or a natural variant; place the keyword once in the first 100 words, once in a subheading, and 2–3 more times across the body, never forcing it at the expense of sentence quality or voice; and write `seo_title` leading with the keyword, aiming under 60 characters. This block is scoped entirely to `blog_post` and its own metadata fields — it does not alter `newsletter_blurb`, `linkedin_hook`, or `instagram_caption` generation rules or voice. Both fields are editable text inputs in the edit modal and are sent to WordPress via Yoast's `yoast_wpseo_focuskw` and `yoast_wpseo_title` on blog publish (same pattern as `meta_description` → `yoast_wpseo_metadesc`).
 
 `max_tokens` is set to 4000 to accommodate the full blog post alongside the other fields.
 

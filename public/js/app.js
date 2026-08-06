@@ -543,6 +543,8 @@ function openEdit(id) {
   setTextareaValue(document.getElementById('editLinkedinHook'), item.linkedin_hook || '');
   setTextareaValue(document.getElementById('editInstagramCaption'), item.instagram_caption || '');
   document.getElementById('editMetaDescription').value = item.meta_description || '';
+  document.getElementById('editSeoTitle').value = item.seo_title || '';
+  document.getElementById('editFocusKeyword').value = item.focus_keyword || '';
   setTextareaValue(document.getElementById('editSourceUrls'), item.source_urls || '');
   document.getElementById('editStatus').value = item.status || 'Draft';
   editImages = [...(item.images || [])];
@@ -714,6 +716,8 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     linkedin_hook: document.getElementById('editLinkedinHook').value,
     instagram_caption: document.getElementById('editInstagramCaption').value,
     meta_description: document.getElementById('editMetaDescription').value,
+    seo_title: document.getElementById('editSeoTitle').value,
+    focus_keyword: document.getElementById('editFocusKeyword').value,
     source_urls: document.getElementById('editSourceUrls').value,
     status: document.getElementById('editStatus').value,
     images: editImages,
@@ -832,6 +836,12 @@ async function enrichCard() {
         if (enriched.meta_description) {
           document.getElementById('editMetaDescription').value = enriched.meta_description;
           updateMetaDescCount();
+        }
+        if (enriched.seo_title) {
+          document.getElementById('editSeoTitle').value = enriched.seo_title;
+        }
+        if (enriched.focus_keyword) {
+          document.getElementById('editFocusKeyword').value = enriched.focus_keyword;
         }
         if (enriched.blog_post && quill) {
           const bp = enriched.blog_post;

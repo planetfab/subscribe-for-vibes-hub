@@ -149,11 +149,13 @@ async function saveToWordPress(item, author = 'fabrice') {
 
   const excerptRaw = (item.newsletter_blurb || '').trim();
 
-  // Send meta_description to Yoast SEO (yoast_meta). WP silently ignores yoast_meta
-  // when the plugin is absent.
-  const metaFields = item.meta_description
-    ? { yoast_meta: { yoast_wpseo_metadesc: item.meta_description } }
-    : {};
+  // Send meta_description, focus_keyword, and seo_title to Yoast SEO (yoast_meta).
+  // WP silently ignores yoast_meta when the plugin is absent.
+  const yoastMeta = {};
+  if (item.meta_description) yoastMeta.yoast_wpseo_metadesc = item.meta_description;
+  if (item.focus_keyword) yoastMeta.yoast_wpseo_focuskw = item.focus_keyword;
+  if (item.seo_title) yoastMeta.yoast_wpseo_title = item.seo_title;
+  const metaFields = Object.keys(yoastMeta).length ? { yoast_meta: yoastMeta } : {};
 
   const { data } = await axios.post(
     `${siteUrl}/wp-json/wp/v2/posts`,
