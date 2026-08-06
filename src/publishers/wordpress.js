@@ -1,6 +1,7 @@
 const axios = require('axios');
 const config = require('../config');
 const { resizeToJpeg, decodeBuffer } = require('../image-utils');
+const { truncateMeta } = require('../claude');
 
 // Build a Gutenberg wp:image block, including an optional figcaption.
 function wpImageBlock(url, caption) {
@@ -154,8 +155,12 @@ async function saveToWordPress(item, author = 'fabrice') {
   // (Not a top-level `yoast_meta` field — that name isn't registered in this
   // site's REST schema and was silently dropped; Yoast registers its fields
   // as ordinary post meta with show_in_rest, reachable only via `meta`.)
+  // Hard safety-net truncation at 155 chars, independent of whatever the system
+  // prompt asked Claude to do — generation-time compliance has already proven
+  // unreliable once, so this runs unconditionally regardless of source (Claude
+  // output, Research & Enrich, or a manual edit in the modal).
   const yoastMeta = {};
-  if (item.meta_description) yoastMeta._yoast_wpseo_metadesc = item.meta_description;
+  if (item.meta_description) yoastMeta._yoast_wpseo_metadesc = truncateMeta(item.meta_description);
   if (item.focus_keyword) yoastMeta._yoast_wpseo_focuskw = item.focus_keyword;
   if (item.seo_title) yoastMeta._yoast_wpseo_title = item.seo_title;
   const metaFields = Object.keys(yoastMeta).length ? { meta: yoastMeta } : {};
