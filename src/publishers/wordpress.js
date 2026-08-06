@@ -157,18 +157,54 @@ async function saveToWordPress(item, author = 'fabrice') {
   if (item.seo_title) yoastMeta.yoast_wpseo_title = item.seo_title;
   const metaFields = Object.keys(yoastMeta).length ? { yoast_meta: yoastMeta } : {};
 
+  const postPayload = {
+    title:   item.piece_title,
+    content,
+    status:  'draft',
+    ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
+    ...(excerptRaw ? { excerpt: { raw: excerptRaw } } : {}),
+    ...metaFields,
+  };
+
+  // ── SEO diagnostic logging (temporary — remove once focus_keyword/seo_title
+  // are confirmed persisting in WordPress) ────────────────────────────────────
+  console.log(`[wordpress][seo-diag] outgoing yoast_meta for "${item.piece_title}":`, JSON.stringify(yoastMeta, null, 2));
+  console.log('[wordpress][seo-diag] full outgoing payload top-level keys:', Object.keys(postPayload));
+
   const { data } = await axios.post(
     `${siteUrl}/wp-json/wp/v2/posts`,
-    {
-      title:   item.piece_title,
-      content,
-      status:  'draft',
-      ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
-      ...(excerptRaw ? { excerpt: { raw: excerptRaw } } : {}),
-      ...metaFields,
-    },
+    postPayload,
     { headers: { ...authHeader, 'Content-Type': 'application/json' } }
   );
+
+  // Log everything WordPress actually echoes back that could carry SEO meta —
+  // top-level keys tell us whether `yoast_meta` is even a recognized REST field
+  // on this site; `data.meta` shows core custom-fields that were registered
+  // with show_in_rest; anything matching /yoast|seo/ is called out explicitly.
+  const seoLikeEcho = Object.fromEntries(
+    Object.entries(data).filter(([k]) => /yoast|seo/i.test(k))
+  );
+  console.log(`[wordpress][seo-diag] response top-level keys:`, Object.keys(data));
+  console.log(`[wordpress][seo-diag] response.meta:`, JSON.stringify(data.meta ?? '(no meta key on response)', null, 2));
+  console.log(`[wordpress][seo-diag] response keys matching /yoast|seo/:`, JSON.stringify(seoLikeEcho, null, 2));
+
+  // Follow-up read with context=edit — the create response sometimes reflects
+  // the request echo rather than confirmed DB state; this confirms what's
+  // actually stored right now.
+  try {
+    const verify = await axios.get(
+      `${siteUrl}/wp-json/wp/v2/posts/${data.id}?context=edit`,
+      { headers: authHeader }
+    );
+    const verifySeoLike = Object.fromEntries(
+      Object.entries(verify.data).filter(([k]) => /yoast|seo/i.test(k))
+    );
+    console.log(`[wordpress][seo-diag] GET verify — response.meta:`, JSON.stringify(verify.data.meta ?? '(no meta key on response)', null, 2));
+    console.log(`[wordpress][seo-diag] GET verify — keys matching /yoast|seo/:`, JSON.stringify(verifySeoLike, null, 2));
+  } catch (verifyErr) {
+    console.error(`[wordpress][seo-diag] verify GET failed: ${verifyErr.message}`);
+  }
+  // ── end SEO diagnostic logging ──────────────────────────────────────────────
 
   return {
     wordpressPostId: data.id,
