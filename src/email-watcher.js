@@ -121,15 +121,6 @@ async function checkEmails(onProgress = () => {}) {
           if (images.length > 0) {
             console.log(`[email] uid ${uid} — image attachments: ${images.map(i => `${i.filename} (${Math.round(i.data.length / 1024)}KB)`).join(', ')}`);
           }
-          // Convert up to MAX_STORED_IMAGES images to base64 for database storage.
-          // { data: Buffer } for Claude → { data: base64 string } for the DB.
-          // When migrating to R2, replace this with upload calls and store { url } instead.
-          const storedImages = images.slice(0, MAX_STORED_IMAGES).map(img => ({
-            data: img.data.toString('base64'),
-            contentType: img.contentType,
-            filename: img.filename,
-          }));
-
           console.log(`[email] uid ${uid} — has text: ${!!parsed.text}, has html: ${!!parsed.html}`);
 
           let bodyText = parsed.text || '';
@@ -205,6 +196,23 @@ async function checkEmails(onProgress = () => {}) {
           onProgress(`Processing: "${subject}"...`);
           const result = await processContent(subject, contentToProcess, images);
           onProgress('Saving to database...');
+
+          // Convert up to MAX_STORED_IMAGES images to base64 for database storage,
+          // merging in Claude's per-image alt_text by position (image_alt_texts is
+          // ordered to match the images Claude was actually shown). If Claude dropped
+          // an image from its own response (e.g. oversized) the arrays can misalign;
+          // any image left without a matched alt_text just stores '' and is editable
+          // manually in the edit modal.
+          // { data: Buffer } for Claude → { data: base64 string } for the DB.
+          // When migrating to R2, replace this with upload calls and store { url } instead.
+          const altTexts = Array.isArray(result.image_alt_texts) ? result.image_alt_texts : [];
+          const storedImages = images.slice(0, MAX_STORED_IMAGES).map((img, i) => ({
+            data: img.data.toString('base64'),
+            contentType: img.contentType,
+            filename: img.filename,
+            alt_text: altTexts[i] || '',
+          }));
+
           // source_urls comes from our own extraction (bodyUrls), not from Claude,
           // so signature-block URLs can never leak through.
           await db.create({ ...result, source_urls: bodyUrls, email_subject: subject, raw_content: sanitized || '(image-only email)', images: storedImages, email_message_id: messageId, email_received_at: parsed.date || null });

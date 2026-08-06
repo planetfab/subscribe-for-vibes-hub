@@ -608,6 +608,7 @@ function renderEditImages() {
       </div>
       <input type="text" class="img-caption-input" placeholder="Add a caption..." value="${esc(img.caption || '')}" oninput="editImages[${i}].caption = this.value">
       <input type="text" class="img-caption-input img-credit-input" placeholder="Photo credit..." value="${esc(img.credit || '')}" oninput="editImages[${i}].credit = this.value">
+      <input type="text" class="img-caption-input img-alt-input" placeholder="Alt text (for WordPress)..." value="${esc(img.alt_text || '')}" oninput="editImages[${i}].alt_text = this.value">
     </div>
   `).join('');
 

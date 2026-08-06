@@ -289,7 +289,7 @@ Michelle Keller\nArt Director | PlanetFab Studio
 For HTML-only emails: `<br>` and closing block tags are converted to `\n` before stripping, ensuring the regex always has a newline to match.
 
 ### Claude system prompt
-The system prompt in `src/claude.js` produces **10 output fields**:
+The system prompt in `src/claude.js` produces **11 output fields**:
 
 | Field | Description |
 |---|---|
@@ -300,9 +300,10 @@ The system prompt in `src/claude.js` produces **10 output fields**:
 | `instagram_caption` | Instagram caption |
 | `source_urls` | Populated by Node.js extraction; Claude is told to leave this empty |
 | `blog_post` | 600–800 word journalistic article. Permitted HTML: `<em></em>` for titles of published works (books, magazines, films, exhibitions, albums, monographs), and `<h2></h2>` for 2–3 SEO subheadings (see below) |
-| `meta_description` | SEO summary, hard max 155 chars, enforced by `truncateMeta()` after parse |
+| `meta_description` | SEO summary, hard max 155 chars — enforced twice: `truncateMeta()` runs on Claude's output in `claude.js`, then again unconditionally in `wordpress.js` immediately before the WordPress publish call, as a safety net independent of generation-time compliance |
 | `focus_keyword` | 2–4 word SEO target phrase for the blog post — the phrase a reader would realistically Google to find the piece |
 | `seo_title` | Keyword-forward title variant for search engines, distinct from `piece_title` (which stays the literary display headline) |
+| `image_alt_texts` | Array of short, genuine alt-text descriptions (one per image, in the order provided, under ~125 chars), only generated when images were attached — includes `focus_keyword` only where it genuinely fits what's visible. Merged into each stored image object as `alt_text` after the Claude call returns; empty array when no images. |
 
 **Blog post SEO (June 15 2026, keyword placement rule revised August 6 2026):** A `BLOG POST SEO` block in the system prompt, additive to the existing blog post and formatting rules, instructs Claude to: derive `focus_keyword`; break `blog_post` into 2–3 `<h2>` sections that read as genuine structural turns in the argument (not filler) and incorporate the keyword or a natural variant; place the keyword once in the introduction (first paragraph), once in or immediately adjacent to each `<h2>` subheading (2–3 additional mentions, one per section), and once in the closing paragraph — tying placement to the section structure instead of a vague "somewhere in the body" instruction, so mentions land evenly rather than clustering. Never forced at the expense of sentence quality or voice — a section's mention is skipped rather than degrading the prose. `seo_title` leads with the keyword, aiming under 60 characters. This block is scoped entirely to `blog_post` and its own metadata fields — it does not alter `newsletter_blurb`, `linkedin_hook`, or `instagram_caption` generation rules or voice. Both fields are editable text inputs in the edit modal and are sent to WordPress via Yoast's `meta._yoast_wpseo_focuskw` and `meta._yoast_wpseo_title` on blog publish (same pattern as `meta_description` → `meta._yoast_wpseo_metadesc`; see the SEO and excerpt section under WordPress Integration for the August 6 2026 bug history on this mechanism).
 
@@ -321,7 +322,7 @@ The system prompt in `src/claude.js` produces **10 output fields**:
 ## Image Handling
 
 ### Storage
-Images from email attachments are stored as base64 in the `images` TEXT column (JSON array). Up to 3 images are stored per card. Each entry: `{ data: base64string, contentType, filename, caption? }`.
+Images from email attachments are stored as base64 in the `images` TEXT column (JSON array). Up to 3 images are stored per card. Each entry: `{ data: base64string, contentType, filename, caption?, credit?, alt_text? }`. No schema migration was needed to add `alt_text` — the column is a schemaless JSON blob, same as `caption`/`credit` before it.
 
 The `getImageSrc(img)` function in `app.js` is the **single swap point** for the storage format — it returns `img.url || data:${img.contentType};base64,${img.data}`. When migrating to Cloudflare R2 or S3, only this function and the `storedImages` builder in `email-watcher.js` need to change.
 
@@ -334,6 +335,7 @@ Each card shows up to 3 thumbnail images. Clicking a thumbnail opens a full-scre
 - Up to 3 images per card — shown as thumbnails with an × remove button
 - **Hero badge** on the first thumbnail — the first image is always the featured/hero image
 - **Photo credit field** — a small text input below each thumbnail for optional caption/credit. Stored in the image object alongside `data`/`contentType`/`filename`. Sent to WordPress as both a Gutenberg `<figcaption>` on inline images and via PATCH to the WP media library caption field.
+- **Alt text field (August 6 2026)** — a third text input below the credit field, editable/overridable before publish, scoped to blog_post/WordPress publishing only. Auto-populated at email-processing time: when images are attached, `processContent()` in `claude.js` asks Claude to generate a short, genuine `image_alt_texts` array (one per image, in the order shown to Claude, under ~125 chars, includes `focus_keyword` only if it genuinely fits what's visible). `email-watcher.js` merges this array into `storedImages` by position after the Claude call returns (moved after the call specifically so the merge is possible — previously `storedImages` was built before Claude ran). Images added manually via the file picker have no Claude-generated alt text and start blank, same as a fresh caption/credit field.
 - **Drag to reorder** using the Pointer Events API (`setPointerCapture` routes all move/up events regardless of pointer position; `touch-action: none` prevents scroll competition on mobile). The caption input is excluded from drag initiation.
 - **Add Image** button — opens a file picker for JPEG/PNG/WebP (max 3 total). Files are converted to base64 client-side via FileReader. Manually added images are NOT sent to Claude for analysis.
 
@@ -341,8 +343,8 @@ Each card shows up to 3 thumbnail images. Clicking a thumbnail opens a full-scre
 When publishing to LinkedIn and the card has images, the first image is resized to **1200×627** (cover crop, 85% JPEG quality via `sharp`) and uploaded via the 3-step LinkedIn media API: register upload slot → PUT binary to pre-signed URL → create post with `shareMediaCategory: IMAGE`. Falls back to text-only post if no images or upload fails.
 
 ### WordPress image publishing
-- **First image**: resized to **1536×1024** JPEG → uploaded to WP media library → set as `featured_media`. Caption set via PATCH to WP media endpoint if a credit is present.
-- **Additional images (2nd, 3rd)**: uploaded at original size/format → embedded as `<!-- wp:image -->` Gutenberg blocks after the first paragraph, with `<figcaption>` if a caption is present
+- **First image**: resized to **1536×1024** JPEG → uploaded to WP media library → set as `featured_media`. Caption and `alt_text` (if present) set via a single PATCH to the WP media endpoint (`caption.raw` / `alt_text`) — this is what makes the featured image's alt attribute correct wherever the theme renders it via `wp_get_attachment_image()`.
+- **Additional images (2nd, 3rd)**: uploaded at original size/format → embedded as `<!-- wp:image -->` Gutenberg blocks after the first paragraph, with `<figcaption>` if a caption is present. The block's own `<img alt="...">` attribute is also set directly from `alt_text` (the media library's alt_text isn't automatically read back into inline block HTML, so both need setting), in addition to the same media-library PATCH as the first image.
 - Individual image upload failures are non-blocking (null is pushed to keep index alignment)
 
 ---
@@ -457,7 +459,7 @@ Once a card is Published or Newsletter Ready, all channel buttons remain active.
 | Meta Description | text input | Live X/160 character counter; green at 150–160, red over 160 |
 | Source URLs | textarea | Comma-separated; pre-filled by Node.js extraction |
 | Status | select | Draft / Approved / Published / Newsletter Ready |
-| Images | thumbnail grid | Hero badge, × remove, drag-to-reorder, Add Image, photo credit input per image |
+| Images | thumbnail grid | Hero badge, × remove, drag-to-reorder, Add Image, photo credit input per image, alt text input per image (blog/WordPress SEO only) |
 
 ### Research & Enrich button
 In the edit modal next to the Blog Post field. Triggers `enrichContent()` which re-enables web search for a single API call to deepen the content with external research. Shows a confirmation dialog with estimated cost ($0.50–$1.00) before proceeding. Updates all text fields (blurb, LinkedIn, Instagram, meta description, blog post) with enriched content; user reviews and saves manually.

@@ -835,6 +835,7 @@ body.bulk-mode .card-actions { display: none; }
 .img-caption-input::placeholder { color: var(--ink-faint); }
 .img-caption-input:focus { outline: none; border-color: var(--ink-muted); color: var(--ink); }
 .img-credit-input { margin-top: 3px; }
+.img-alt-input { margin-top: 3px; }
 
 /* Reuse .card-thumb sizing — the same 80×64 box */
 .edit-thumb-wrap .card-thumb {

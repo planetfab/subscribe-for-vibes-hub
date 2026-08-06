@@ -3,18 +3,23 @@ const config = require('../config');
 const { resizeToJpeg, decodeBuffer } = require('../image-utils');
 const { truncateMeta } = require('../claude');
 
-// Build a Gutenberg wp:image block, including an optional figcaption.
-function wpImageBlock(url, caption) {
+// Escape a value for safe use inside an HTML attribute.
+function escAttr(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Build a Gutenberg wp:image block, including an optional figcaption and alt text.
+function wpImageBlock(url, caption, altText) {
   const captionAttr = caption ? `,"caption":${JSON.stringify(caption)}` : '';
   const figcaption = caption
     ? `<figcaption class="wp-element-caption">${caption}</figcaption>`
     : '';
-  return `<!-- wp:image {"sizeSlug":"large"${captionAttr}} -->\n<figure class="wp-block-image size-large"><img src="${url}" alt=""/>${figcaption}</figure>\n<!-- /wp:image -->`;
+  return `<!-- wp:image {"sizeSlug":"large"${captionAttr}} -->\n<figure class="wp-block-image size-large"><img src="${url}" alt="${escAttr(altText)}"/>${figcaption}</figure>\n<!-- /wp:image -->`;
 }
 
 // Build Gutenberg-compatible HTML for the post body from plain text.
 // Inline images (2nd, 3rd) are inserted as wp:image blocks after the first paragraph.
-// inlineImages: [{ url, caption? }]
+// inlineImages: [{ url, caption?, altText? }]
 function buildPostContent(blurb, inlineImages) {
   const paragraphs = (blurb || '')
     .split(/\n{2,}/)
@@ -31,7 +36,7 @@ function buildPostContent(blurb, inlineImages) {
     return paragraphs.join('\n\n') || '';
   }
 
-  const imgBlocks = inlineImages.map(m => wpImageBlock(m.url, m.caption)).join('\n\n');
+  const imgBlocks = inlineImages.map(m => wpImageBlock(m.url, m.caption, m.altText)).join('\n\n');
 
   if (!paragraphs.length) return imgBlocks;
 
@@ -40,11 +45,11 @@ function buildPostContent(blurb, inlineImages) {
 }
 
 // Build post body from Quill HTML. Inline images are inserted after the first </p>.
-// inlineImages: [{ url, caption? }]
+// inlineImages: [{ url, caption?, altText? }]
 function buildPostContentFromHtml(html, inlineImages) {
   if (!inlineImages.length) return html || '';
 
-  const imgBlocks = inlineImages.map(m => wpImageBlock(m.url, m.caption)).join('\n\n');
+  const imgBlocks = inlineImages.map(m => wpImageBlock(m.url, m.caption, m.altText)).join('\n\n');
 
   if (!html) return imgBlocks;
 
@@ -74,7 +79,7 @@ async function saveToWordPress(item, author = 'fabrice') {
   // Additional images → original size/format → embedded inline in the post body.
   // null is pushed on individual failures to keep index alignment; failures are non-blocking.
   const images = item.images || [];
-  const uploadedMedia = []; // { id, source_url, caption? } | null per image
+  const uploadedMedia = []; // { id, source_url, caption?, altText? } | null per image
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
@@ -108,23 +113,29 @@ async function saveToWordPress(item, author = 'fabrice') {
       // credit (photo credit) is what's shown as the WP figcaption; caption (the
       // descriptive line) falls back for images saved before the two fields split
       const caption = img.credit || img.caption || '';
+      const altText = img.alt_text || '';
 
-      // Set the caption on the WP media object so it appears in the media library
-      // and in theme templates that render the featured image caption.
-      if (caption) {
+      // Set the caption and alt text on the WP media object — caption appears in
+      // the media library and theme templates that render it; alt_text becomes the
+      // image's WordPress alt attribute wherever the media library object itself is
+      // rendered (e.g. the featured image via wp_get_attachment_image).
+      if (caption || altText) {
         try {
+          const metaUpdate = {};
+          if (caption) metaUpdate.caption = { raw: caption };
+          if (altText) metaUpdate.alt_text = altText;
           await axios.post(
             `${siteUrl}/wp-json/wp/v2/media/${mediaId}`,
-            { caption: { raw: caption } },
+            metaUpdate,
             { headers: { ...authHeader, 'Content-Type': 'application/json' } }
           );
         } catch (capErr) {
-          console.error(`[wordpress] media ${mediaId} caption update failed: ${capErr.message}`);
+          console.error(`[wordpress] media ${mediaId} caption/alt text update failed: ${capErr.message}`);
         }
       }
 
-      uploadedMedia.push({ id: mediaId, source_url: mediaRes.data.source_url, caption });
-      console.log(`[wordpress] uploaded media ${i + 1}/${images.length} — WP media ID ${mediaId}${caption ? ' (with caption)' : ''}`);
+      uploadedMedia.push({ id: mediaId, source_url: mediaRes.data.source_url, caption, altText });
+      console.log(`[wordpress] uploaded media ${i + 1}/${images.length} — WP media ID ${mediaId}${caption ? ' (with caption)' : ''}${altText ? ' (with alt text)' : ''}`);
     } catch (err) {
       console.error(`[wordpress] media upload ${i + 1} failed: ${err.message}`);
       uploadedMedia.push(null);
@@ -133,7 +144,7 @@ async function saveToWordPress(item, author = 'fabrice') {
 
   const featuredMediaId = uploadedMedia[0]?.id || null;
   // Images 2 and 3 (if uploaded successfully) are embedded inline in the post body
-  const inlineImages = uploadedMedia.slice(1).filter(Boolean).map(m => ({ url: m.source_url, caption: m.caption }));
+  const inlineImages = uploadedMedia.slice(1).filter(Boolean).map(m => ({ url: m.source_url, caption: m.caption, altText: m.altText }));
 
   // Prefer blog_post (rich Quill HTML or Claude plain text) over newsletter_blurb.
   // If blog_post is HTML from Quill (starts with <), use the HTML-aware builder
