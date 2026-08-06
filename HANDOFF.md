@@ -214,7 +214,7 @@ The app creates and migrates all tables automatically at startup. Current column
 | `instagram_caption` | TEXT | |
 | `source_urls` | TEXT | Comma-separated; extracted in Node.js after signature stripping, not by Claude |
 | `blog_post` | TEXT | 600–800 word article; stored as Quill HTML after first edit; `<em>` tags used for titles of published works |
-| `meta_description` | TEXT | SEO meta description, max 155 chars; sent to Yoast SEO + WP excerpt on blog publish |
+| `meta_description` | TEXT | SEO meta description, max 155 chars; sent to Yoast SEO (`meta._yoast_wpseo_metadesc`) + WP excerpt on blog publish |
 | `focus_keyword` | TEXT | 2–4 word SEO target phrase for the blog post; sent to Yoast's `yoast_wpseo_focuskw` on blog publish. Does not affect newsletter/LinkedIn/Instagram. |
 | `seo_title` | TEXT | Keyword-forward title variant for search engines, distinct from `piece_title` (which stays the literary display headline); sent to Yoast's `yoast_wpseo_title` on blog publish. |
 | `status` | TEXT | `Draft`, `Approved`, `Published`, `Newsletter Ready` |
@@ -304,7 +304,7 @@ The system prompt in `src/claude.js` produces **10 output fields**:
 | `focus_keyword` | 2–4 word SEO target phrase for the blog post — the phrase a reader would realistically Google to find the piece |
 | `seo_title` | Keyword-forward title variant for search engines, distinct from `piece_title` (which stays the literary display headline) |
 
-**Blog post SEO (June 15 2026):** A `BLOG POST SEO` block in the system prompt, additive to the existing blog post and formatting rules, instructs Claude to: derive `focus_keyword`; break `blog_post` into 2–3 `<h2>` sections that read as genuine structural turns in the argument (not filler) and incorporate the keyword or a natural variant; place the keyword once in the first 100 words, once in a subheading, and 2–3 more times across the body, never forcing it at the expense of sentence quality or voice; and write `seo_title` leading with the keyword, aiming under 60 characters. This block is scoped entirely to `blog_post` and its own metadata fields — it does not alter `newsletter_blurb`, `linkedin_hook`, or `instagram_caption` generation rules or voice. Both fields are editable text inputs in the edit modal and are sent to WordPress via Yoast's `yoast_wpseo_focuskw` and `yoast_wpseo_title` on blog publish (same pattern as `meta_description` → `yoast_wpseo_metadesc`).
+**Blog post SEO (June 15 2026):** A `BLOG POST SEO` block in the system prompt, additive to the existing blog post and formatting rules, instructs Claude to: derive `focus_keyword`; break `blog_post` into 2–3 `<h2>` sections that read as genuine structural turns in the argument (not filler) and incorporate the keyword or a natural variant; place the keyword once in the first 100 words, once in a subheading, and 2–3 more times across the body, never forcing it at the expense of sentence quality or voice; and write `seo_title` leading with the keyword, aiming under 60 characters. This block is scoped entirely to `blog_post` and its own metadata fields — it does not alter `newsletter_blurb`, `linkedin_hook`, or `instagram_caption` generation rules or voice. Both fields are editable text inputs in the edit modal and are sent to WordPress via Yoast's `meta._yoast_wpseo_focuskw` and `meta._yoast_wpseo_title` on blog publish (same pattern as `meta_description` → `meta._yoast_wpseo_metadesc`; see the SEO and excerpt section under WordPress Integration for the August 6 2026 bug history on this mechanism).
 
 `max_tokens` is set to 4000 to accommodate the full blog post alongside the other fields.
 
@@ -361,9 +361,13 @@ Each card has two blog buttons: **Blog as Fabrice** and **Blog as Michelle**. Pu
 WordPress receives the `blog_post` field as the post body (not `newsletter_blurb`). If `blog_post` is Quill HTML (starts with `<`), it is sent as-is with inline image blocks injected after the first `</p>`. If `blog_post` is plain text (pre-edit), it is wrapped in Gutenberg `<!-- wp:paragraph -->` blocks. If `blog_post` is empty, falls back to `newsletter_blurb`.
 
 ### SEO and excerpt
-Each published post also receives:
-- **`yoast_meta.yoast_wpseo_metadesc`** — set to `meta_description` if present (Yoast SEO plugin)
+Each published post also receives, via the standard WP core `meta` object (Yoast SEO Premium registers these as ordinary post meta with `show_in_rest`, using its own underscore-prefixed key names — **not** a top-level `yoast_meta` field):
+- **`meta._yoast_wpseo_metadesc`** — set to `meta_description` if present
+- **`meta._yoast_wpseo_focuskw`** — set to `focus_keyword` if present
+- **`meta._yoast_wpseo_title`** — set to `seo_title` if present
 - **`excerpt.raw`** — set to the full `newsletter_blurb`; Elementor handles truncation in the archive view
+
+**Bug history (August 6 2026):** All three Yoast fields were originally sent as `yoast_meta: { yoast_wpseo_* }` (no underscore, wrong envelope). WordPress's REST schema doesn't recognize a top-level `yoast_meta` field, so it silently dropped the whole object on every publish — including `meta_description`, despite it having been assumed to work since the SEO summary feature shipped. Confirmed via diagnostic logging of the WP create response and a follow-up `GET ?context=edit`: `meta._yoast_wpseo_*` came back empty for all three fields on every prior publish. Fixed by sending `meta: { _yoast_wpseo_metadesc, _yoast_wpseo_focuskw, _yoast_wpseo_title }` instead.
 
 ### Generating an Application Password
 1. Log in to `planetfab.com/wp-admin`
@@ -648,7 +652,7 @@ Gather all of the following **before starting**. Missing credentials mid-setup w
 **WordPress** (if blog publishing is wanted; skip for Squarespace)
 - [ ] WordPress site URL (self-hosted or WordPress.com Business plan — both support the REST API).
 - [ ] Application Password for each author. Generated in WP Admin → Users → Profile → Application Passwords. Must be generated by an account with at least Editor role.
-- [ ] Confirm the Yoast SEO plugin is installed if SEO meta descriptions should populate (WP silently ignores `yoast_meta` if Yoast is absent — no error, just no SEO data).
+- [ ] Confirm the Yoast SEO plugin is installed if SEO meta descriptions should populate. SEO fields are sent via the WP core `meta` object with Yoast's underscore-prefixed keys (`_yoast_wpseo_metadesc`, `_yoast_wpseo_focuskw`, `_yoast_wpseo_title`) — if Yoast isn't installed, or a different SEO plugin uses different meta key names, these are silently ignored with no error, just no SEO data. Verify with a test publish and a `GET /wp-json/wp/v2/posts/{id}?context=edit` to confirm the values actually persisted, not just that the create call succeeded.
 
 **Session security**
 - [ ] Generate a `SESSION_SECRET` with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
