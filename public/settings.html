@@ -64,6 +64,22 @@
       </div>
     </div>
 
+    <div class="settings-section" style="margin-top:36px">
+      <div class="settings-section-header">
+        <h2>Notification Recipients</h2>
+        <p>These addresses receive an email each time a post is published or saved to LinkedIn, Instagram, WordPress, or the newsletter. Separate multiple addresses with commas.</p>
+      </div>
+
+      <div class="settings-card">
+        <textarea id="notifyRecipients" class="notify-textarea" rows="3" placeholder="name@example.com, name2@example.com"></textarea>
+        <div class="settings-card-actions notify-actions">
+          <button id="notifySave" class="btn btn-primary btn-sm">Save</button>
+          <button id="notifyTest" class="btn btn-secondary btn-sm" disabled>Send Test Notification</button>
+          <span id="notifyStatus" class="notify-status"></span>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <div class="toast" id="toast"></div>

@@ -145,10 +145,63 @@ async function selectInstagramAccount(igId) {
     const result = await apiFetch('/api/settings/instagram/select', { method: 'POST', body: { igId } });
     showToast(`Instagram connected: @${result.username}`);
     await loadInstagram();
+loadNotifyRecipients();
   } catch (err) {
     showToast(err.message, true);
   }
 }
+
+// ── Notification recipients ───────────────────────────────────────────────
+
+const notifyBox    = document.getElementById('notifyRecipients');
+const notifySave   = document.getElementById('notifySave');
+const notifyTest   = document.getElementById('notifyTest');
+const notifyStatus = document.getElementById('notifyStatus');
+
+function setNotifyStatus(msg, color) {
+  notifyStatus.textContent = msg;
+  notifyStatus.style.color = color || '';
+}
+
+async function loadNotifyRecipients() {
+  try {
+    const { recipients } = await apiFetch('/api/settings/notification-recipients');
+    notifyBox.value = recipients;
+    notifyTest.disabled = !recipients.trim();
+  } catch (err) {
+    setNotifyStatus(err.message, '#c0392b');
+  }
+}
+
+notifySave.addEventListener('click', async () => {
+  notifySave.disabled = true;
+  setNotifyStatus('Saving…');
+  try {
+    const { recipients } = await apiFetch('/api/settings/notification-recipients', {
+      method: 'POST', body: { recipients: notifyBox.value },
+    });
+    notifyBox.value = recipients;
+    notifyTest.disabled = !recipients;
+    setNotifyStatus('Saved', '#27ae60');
+  } catch (err) {
+    setNotifyStatus(`Failed: ${err.message}`, '#c0392b');
+  } finally {
+    notifySave.disabled = false;
+  }
+});
+
+notifyTest.addEventListener('click', async () => {
+  notifyTest.disabled = true;
+  setNotifyStatus('Sending…');
+  try {
+    await apiFetch('/api/settings/notify-test', { method: 'POST' });
+    setNotifyStatus('Test email sent', '#27ae60');
+  } catch (err) {
+    setNotifyStatus(`Failed: ${err.message}`, '#c0392b');
+  } finally {
+    notifyTest.disabled = !notifyBox.value.trim();
+  }
+});
 
 // ── Shared helpers ────────────────────────────────────────────────────────
 
@@ -217,3 +270,4 @@ if ([...params.keys()].some(k => k.startsWith('li_') || k.startsWith('ig_'))) {
 
 loadLinkedIn();
 loadInstagram();
+loadNotifyRecipients();

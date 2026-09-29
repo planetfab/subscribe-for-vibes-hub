@@ -20,6 +20,7 @@
     "imapflow": "^1.0.162",
     "mailparser": "^3.6.9",
     "node-cron": "^3.0.3",
+    "nodemailer": "^8.0.10",
     "pg": "^8.11.3",
     "sharp": "^0.34.5",
     "uuid": "^9.0.0"

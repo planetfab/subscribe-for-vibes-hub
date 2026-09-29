@@ -4,6 +4,10 @@ const db = require('../database');
 const { publishToLinkedIn } = require('../publishers/linkedin');
 const { publishToInstagram } = require('../publishers/instagram');
 const { saveToWordPress } = require('../publishers/wordpress');
+const { notifyPublished } = require('../notifier');
+
+const LINKEDIN_LABELS = { fabrice: 'Fabrice', michelle: 'Michelle', planetfab: 'PlanetFab page' };
+const AUTHOR_LABELS = { fabrice: 'Fabrice', michelle: 'Michelle' };
 
 function requireApproved(item) {
   if (item.status === 'Draft') {
@@ -24,6 +28,12 @@ router.post('/linkedin/:type/:id', async (req, res) => {
     await db.update(id, { status: 'Published' });
     await db.markChannelPublished(id, `linkedin_${type}`);
     const updated = await db.getById(id);
+    notifyPublished({
+      channel: `LinkedIn (${LINKEDIN_LABELS[type] || type})`,
+      title: item.piece_title,
+      section: item.section_name,
+      text: item.linkedin_hook,
+    });
     res.json({ success: true, ...result, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
@@ -40,6 +50,12 @@ router.post('/instagram/:id', async (req, res) => {
     const result = await publishToInstagram(item);
     await db.markChannelPublished(id, 'instagram');
     const updated = await db.getById(id);
+    notifyPublished({
+      channel: 'Instagram',
+      title: item.piece_title,
+      section: item.section_name,
+      text: item.instagram_caption,
+    });
     res.json({ success: true, ...result, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
@@ -56,6 +72,13 @@ router.post('/newsletter/:id', async (req, res) => {
     await db.update(id, { status: 'Newsletter Ready' });
     await db.markChannelPublished(id, 'newsletter');
     const updated = await db.getById(id);
+    notifyPublished({
+      channel: 'Newsletter',
+      title: item.piece_title,
+      section: item.section_name,
+      text: item.newsletter_blurb,
+      action: 'marked ready',
+    });
     res.json({ success: true, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
@@ -76,6 +99,13 @@ router.post('/blog/:author/:id', async (req, res) => {
     const result = await saveToWordPress(item, author);
     await db.markChannelPublished(id, `blog_${author}`);
     const updated = await db.getById(id);
+    notifyPublished({
+      channel: `WordPress blog (${AUTHOR_LABELS[author]})`,
+      title: item.piece_title,
+      section: item.section_name,
+      text: `${item.blog_post || item.newsletter_blurb || ''}${result.editUrl ? `\n\nEdit in WordPress: ${result.editUrl}` : ''}`,
+      action: 'saved as draft',
+    });
     res.json({ success: true, ...result, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });

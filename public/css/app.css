@@ -1248,6 +1248,18 @@ body.bulk-mode .card-actions { display: none; }
   border-top: 1px solid var(--border);
 }
 
+.notify-textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  resize: vertical;
+}
+.notify-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.notify-status { font-size: 12px; }
+
 .settings-prereq {
   font-size: 11px;
   color: var(--ink-muted);

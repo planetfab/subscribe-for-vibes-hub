@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../database');
 const config = require('../config');
 const { saveInstagramAccount } = require('./instagram-oauth');
+const { sendTestNotification, parseRecipients } = require('../notifier');
 
 // ── LinkedIn ─────────────────────────────────────────────────────────────
 
@@ -102,6 +103,36 @@ router.post('/instagram/select', async (req, res) => {
     res.json({ success: true, username: account.igUsername });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Notifications ─────────────────────────────────────────────────────────
+
+router.get('/notification-recipients', async (req, res) => {
+  try {
+    res.json({ recipients: (await db.getSetting('notification_recipients')) || '' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/notification-recipients', async (req, res) => {
+  try {
+    const list = parseRecipients(req.body.recipients);
+    const value = list.join(', ');
+    await db.setSetting('notification_recipients', value);
+    res.json({ recipients: value });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/notify-test', async (req, res) => {
+  try {
+    const result = await sendTestNotification();
+    res.json({ success: true, recipients: result.recipients });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
