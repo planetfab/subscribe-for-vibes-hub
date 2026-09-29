@@ -83,7 +83,8 @@ subscribe-for-vibes-hub/
 │   │   ├── publish.js             # POST /api/publish/* (LinkedIn, Instagram, newsletter, blog)
 │   │   ├── linkedin-oauth.js      # LinkedIn OAuth initiation + callback
 │   │   ├── instagram-oauth.js     # Instagram/Facebook OAuth initiation + callback
-│   │   └── settings-api.js        # GET/POST /api/settings/linkedin, /instagram
+│   │   └── settings-api.js        # GET/POST /api/settings/linkedin, /instagram, /notification-recipients; POST /notify-test
+│   ├── notifier.js                # Publish notification emails (Nodemailer)
 │   └── publishers/
 │       ├── linkedin.js            # LinkedIn UGC Posts API (with image upload)
 │       ├── instagram.js           # Meta Graph API (create container + publish)
@@ -487,6 +488,40 @@ Header shows "Est. API cost this month: $X.XX" — calculated as card count × $
 | Newsletter | Marks as Newsletter Ready | Approved/Published |
 
 Note: The **PlanetFab company LinkedIn button has been removed** from all cards. Company page publishing requires Marketing Developer Platform approval which is pending.
+
+---
+
+## Publish Notifications — added September 29 2026
+
+Ported from the identical feature already live on NoteToPost (jay.notetopost.com), adapted for the Hub's draft-only WordPress flow and mark-as-ready-only newsletter flow.
+
+**How it works**
+- `src/notifier.js` sends plain-text email via Nodemailer on `smtp.dreamhost.com:465` (SSL), using `SMTP_USER` / `SMTP_PASS`. Falls back to `IMAP_USER` / `IMAP_PASSWORD` if the SMTP vars are unset.
+- Calls are fire-and-forget (not awaited) after each successful publish. Errors are caught and logged, so a failed email never blocks or fails the publish. The transport has an `error` listener so socket errors can't crash the process.
+- Email subject: `Subscribe for Vibes Hub: <channel> post <action> — <title>`. Body: channel, title, section, Eastern-time timestamp, full text, "sent automatically" footer.
+
+**Fires on exactly six paths** (`src/routes/publish.js`)
+1. LinkedIn / Fabrice
+2. LinkedIn / Michelle
+3. Instagram
+4. Newsletter (marked ready — nothing is actually sent)
+5. WordPress draft / Fabrice
+6. WordPress draft / Michelle
+
+It deliberately does **not** fire for the PlanetFab company-page LinkedIn button. That path is gated out by the `LINKEDIN_LABELS` lookup (no label, no notification) because it is still pending Marketing Developer Platform approval.
+
+**Recipients**
+- Stored in the `settings` table under `notification_recipients` via `db.getSetting` / `db.setSetting`. Comma-, semicolon- or newline-separated; saved normalized as a comma-separated list.
+- Routes in `settings-api.js`: `GET` / `POST /api/settings/notification-recipients`, `POST /api/settings/notify-test`.
+- Settings page (`settings.html` / `settings.js`): "Notification Recipients" section with a textarea, Save, and Send Test Notification. Test is disabled until a recipient is saved; inline feedback shows Sending… then Test email sent / Failed: …
+
+**Railway (Hub project `enthusiastic-illumination`, service `web`)**
+- `SMTP_HOST=smtp.dreamhost.com`, `SMTP_PORT=465`, `SMTP_USER=buzzby@planetfab.com` are set.
+- `SMTP_PASS` is a Railway reference to `IMAP_PASSWORD` (`${{IMAP_PASSWORD}}`), not a typed literal.
+
+**Commits:** `5152418` (initial build), `761561a` (scope trim removing the company-page notification).
+
+**Status:** deployed and live. An end-to-end test notification has **not yet been confirmed sent** — verify via Settings → Send Test Notification before considering this fully closed.
 
 ---
 
