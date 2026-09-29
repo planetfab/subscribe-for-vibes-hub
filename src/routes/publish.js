@@ -6,7 +6,7 @@ const { publishToInstagram } = require('../publishers/instagram');
 const { saveToWordPress } = require('../publishers/wordpress');
 const { notifyPublished } = require('../notifier');
 
-const LINKEDIN_LABELS = { fabrice: 'Fabrice', michelle: 'Michelle', planetfab: 'PlanetFab page' };
+const LINKEDIN_LABELS = { fabrice: 'Fabrice', michelle: 'Michelle' };
 const AUTHOR_LABELS = { fabrice: 'Fabrice', michelle: 'Michelle' };
 
 function requireApproved(item) {
@@ -28,12 +28,14 @@ router.post('/linkedin/:type/:id', async (req, res) => {
     await db.update(id, { status: 'Published' });
     await db.markChannelPublished(id, `linkedin_${type}`);
     const updated = await db.getById(id);
-    notifyPublished({
-      channel: `LinkedIn (${LINKEDIN_LABELS[type] || type})`,
-      title: item.piece_title,
-      section: item.section_name,
-      text: item.linkedin_hook,
-    });
+    if (LINKEDIN_LABELS[type]) {
+      notifyPublished({
+        channel: `LinkedIn (${LINKEDIN_LABELS[type]})`,
+        title: item.piece_title,
+        section: item.section_name,
+        text: item.linkedin_hook,
+      });
+    }
     res.json({ success: true, ...result, item: updated });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
