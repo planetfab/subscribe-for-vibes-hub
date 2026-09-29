@@ -125,6 +125,10 @@ All variables must be set in Railway → Project → Service → Variables. They
 | `IMAP_PORT` | `993` |
 | `IMAP_USER` | `buzzby@planetfab.com` |
 | `IMAP_PASSWORD` | Dreamhost email password for buzzby@planetfab.com |
+| `SMTP_HOST` | `smtp.dreamhost.com` — outgoing mail server for publish notifications |
+| `SMTP_PORT` | `465` (SSL) |
+| `SMTP_USER` | `buzzby@planetfab.com` |
+| `SMTP_PASS` | Railway **reference** to `IMAP_PASSWORD` (`${{IMAP_PASSWORD}}`) — not a literal value. Rotating `IMAP_PASSWORD` updates it automatically. |
 | `DATABASE_URL` | Auto-injected by Railway PostgreSQL addon. Leave blank for local dev (uses in-memory). |
 | `NODE_ENV` | Set to `production` on Railway so session cookies are marked Secure |
 | `PORT` | Set automatically by Railway — do not override |
