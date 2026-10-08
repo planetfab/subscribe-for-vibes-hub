@@ -529,6 +529,95 @@ It deliberately does **not** fire for the PlanetFab company-page LinkedIn button
 
 ---
 
+## Editorial Integrity Workflow, planned October 8 2026
+
+**Status:** planned, nothing built. This section records the request, the evidence, and the decisions so the build can start from it.
+
+### Request (from Michelle)
+
+- Drafts must use her brief for argument and structure, not follow a source's wording.
+- Check facts against sources actually read, and flag anything unsupported, conflicting or inaccessible.
+- Attribute others' arguments and quotes.
+- Check for copied language and close paraphrase.
+- Never imply she read, attended or experienced something unless she said so.
+- Deliver a draft, a short source list and unresolved issues before publication.
+- Adapt copy per platform without new facts or lost qualifications.
+- Also: when she edits a fact in the newsletter, she wants to update the other platforms to match.
+
+### Test cases
+
+- Byrne card `525c5d72-e63f-43bc-b5b8-b626bf036e31`
+- Castelbajac card `c17fb807-7a85-418a-9aef-8b2151d33b67`
+
+Full text and the flagged claims for both are in `~/Desktop/hub-test-cases.md` (outside the repo, not committed).
+
+### Findings
+
+- The system prompt has no grounding rule. It tells Claude to use "I" for personal observation, to bring in outside history and quotes in the blog, and to end on a "bigger idea."
+- `processContent()` has no tools, so it never reads links. In the Castelbajac card the Mattel link was never fetched, so the outfit descriptions were invented.
+- `enrichContent()` uses web search and reads the saved database row (not unsaved edits). It is told to add concrete names, quotes and dates, and returns every field. Its results overwrite unsaved edits in the modal.
+- Nothing records whether Enrich ran, and token usage is not logged.
+- The model name `claude-sonnet-4-5` is hardcoded in both functions (`max_tokens` 8000, no temperature set).
+
+### Decisions
+
+- **Drafting inputs:** draft from her brief, and read the links she supplies at draft time (cap about 3, trim pages, flag any it cannot open). Open-web search stays a button with a cost estimate shown first. Measure cost via usage logging before widening anything.
+- **Replace Enrich with two actions:**
+  - **Research:** saves research notes and offers a redraft shown as a diff. Never overwrites her edits.
+  - **Verify:** a claim table starting from the blog, with statuses confirmed, not found, sources disagree, could not access. Includes a copy and close-paraphrase check against fetched sources, mostly deterministic.
+- **Publishing:** unresolved issues WARN but never block publishing. She can mark an item "I checked this."
+- **Blog:** stays long-form. Anything not from her brief or a read source is highlighted as unverified, and the highlighting is stripped before WordPress. Recommended default: unverified material stays in the blog only, not the newsletter, LinkedIn or Instagram (pending Michelle's confirmation).
+- **Thin briefs:** briefs that ask for facts nothing readable supports should produce a "Research first" notice instead of memory-based drafting.
+- **Sync on edit** (nothing saves without confirmation):
+  - Tier 1: deterministic find-and-replace of the changed fact, with highlighted per-field accept.
+  - Tier 2: Claude re-adaptation from approved text, with a before/after diff.
+- **Voice:** add six of Michelle's newsletter pieces as labeled style samples (Logo Art, FRIENIME, Carsten Hoeller, Period, The Pleasure Principle, Do You as the Human Moment sample), loaded from a separate file, never reusing their facts or phrases. Newsletter target is about 260 words (her samples range 200 to 380). One blog-length example, a rewrite of Logo Art, is in progress with Michelle.
+- **Config:** make the model a config variable.
+
+### Build order
+
+1. Prompt rewrite and usage logging.
+2. Research rework.
+3. Verify and originality check.
+4. Sync on edit.
+
+Test each phase on the two cards.
+
+### Housekeeping
+
+- The startup log that printed part of `DATABASE_URL` was removed in commit `6a6e59a`. Older Railway logs may still hold part of the password, so Postgres password rotation is deferred and planned.
+- Railway Postgres daily backups are confirmed by Fabrice (191 MB, point-in-time recovery off). Do a manual backup right before any rotation.
+- `~/Projects` is still linked to `notetopost-jay` in the Railway CLI (the link is stored per folder). As of October 8 2026 the hub folder itself is linked to `enthusiastic-illumination`. Always use explicit `-p -e -s` flags and never run `railway link`.
+
+### Open
+
+- **Spend cap not confirmed.** This file records a $20/month cap from July 1 2026 (see the cost incident notes above), but the current monthly Anthropic spend cap has not been checked at console.anthropic.com. Confirm it before adding anything that reads pages.
+
+### Current length rules (verified)
+
+Verified against `SYSTEM_PROMPT` in `src/claude.js` and the counters in `public/js/app.js` on October 8 2026. The prompt gives targets; the UI only turns the counter red above a maximum. Nothing blocks saving or publishing, and no field has an enforced minimum.
+
+| Field | System prompt rule | UI counter (`public/js/app.js`) |
+|---|---|---|
+| `newsletter_blurb` | "150–750 words depending on subject depth" | `N/750 words`; red above 750 |
+| `linkedin_hook` | "150–250 words" | `N/250 words`; red above 250 |
+| `instagram_caption` | "short, punchy"; no number | `N/125 words`; red above 125 |
+| `blog_post` | "600–800 words" (2–3 `<h2>` subheadings) | `N/800 words`; red above 800 |
+| `meta_description` | one sentence, "hard maximum 155 characters", aim for 140–150 | `N/160` characters; green at 150 or more, red above 160. The input placeholder says "150–160 characters" |
+| `seo_title` | "aim to stay under 60 characters" | no counter |
+| `image_alt_texts` | each under about 125 characters | no counter |
+
+Enforced in code: `truncateMeta()` cuts `meta_description` at the last word boundary at or before 155 characters, in `processContent()`, `enrichContent()` and again just before the WordPress send (`src/publishers/wordpress.js`). No other field is truncated or rejected.
+
+Inconsistencies to resolve in the rewrite:
+- `meta_description`: the prompt says 155 maximum, the UI allows 160 and the placeholder says 150–160. Server truncation at 155 wins at publish.
+- `instagram_caption`: the UI has a 125-word maximum that the prompt never states.
+- The planned newsletter target of about 260 words sits inside the prompt's 150–750 range, and well below the UI's 750 ceiling.
+
+Card previews in the dashboard list truncate for display only: blurb 200 characters, LinkedIn 160, Instagram 120, blog 120 (`cardField()` calls in `public/js/app.js`).
+
+---
+
 ## Known Limitations
 
 ### 1. Instagram publishing — live as of June 9 2026
